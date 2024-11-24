@@ -13,7 +13,7 @@ I'm mainly going this far to write the entire app from the ground up to make sur
 - [ ] **Client and Server modules written in Rust.** Shared code and data structures should be in a Common module.
 - [ ] **[CRUD](https://en.wikipedia.org/wiki/Create%2C_read%2C_update_and_delete) pig names.**
 - [ ] **[RBAC](https://en.wikipedia.org/wiki/Role-based_access_control) to allow different levels of access.** You should also be able to configure groups for assigning these roles to users.
-- [ ] **[OIDC](https://en.wikipedia.org/wiki/OpenID#OpenID_Connect_(OIDC) authentication, the app should not manage authentication.** It should, however, be able to read user groups from OIDC user info and manage users' groups through it.
+- [ ] **[OIDC](https://en.wikipedia.org/wiki/OpenID#OpenID_Connect_(OIDC)) authentication, the app should not manage authentication.** It should, however, be able to read user groups from OIDC user info and manage users' groups through it.
 - [ ] **Fully declarative configuration.** Ideally, this is possible through NixOS modules that you can also use to deploy it. The config file itself can be TOML as I don't care about reading it, just processing. It should also be able to take config from environment variables (takes precedent over config) and possibly CLI options (takes precedent over env).
 
 ### Milestone 2
