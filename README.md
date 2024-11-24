@@ -1,87 +1,54 @@
-# eframe template
+# Pig Web App
 
-[![dependency status](https://deps.rs/repo/github/emilk/eframe_template/status.svg)](https://deps.rs/repo/github/emilk/eframe_template)
-[![Build Status](https://github.com/emilk/eframe_template/workflows/CI/badge.svg)](https://github.com/emilk/eframe_template/actions?workflow=CI)
+*This is getting out of hand.*
 
-This is a template repo for [eframe](https://github.com/emilk/egui/tree/master/crates/eframe), a framework for writing apps using [egui](https://github.com/emilk/egui/).
+The Pig Web App is meant to be a web GUI to manage the list of pig names. Keeping them in a yml file on a server that is almost never up is no longer feasible, and even if it were, the plugin is not built to manage such a large list efficiently.
 
-The goal is for this to be the simplest way to get started writing a GUI app in Rust.
+I'm mainly going this far to write the entire app from the ground up to make sure search queries are handled server-side, as Pocketbase doesn't support serverside functions.
 
-You can compile your app natively or for the web, and share it using Github Pages.
+## Goals
 
-## Getting started
+### Milestone 1
 
-Start by clicking "Use this template" at https://github.com/emilk/eframe_template/ or follow [these instructions](https://docs.github.com/en/free-pro-team@latest/github/creating-cloning-and-archiving-repositories/creating-a-repository-from-a-template).
+- [ ] **Client and Server modules written in Rust.** Shared code and data structures should be in a Common module.
+- [ ] **[CRUD](https://en.wikipedia.org/wiki/Create%2C_read%2C_update_and_delete) pig names.**
+- [ ] **[RBAC](https://en.wikipedia.org/wiki/Role-based_access_control) to allow different levels of access.** You should also be able to configure groups for assigning these roles to users.
+- [ ] **[OIDC](https://en.wikipedia.org/wiki/OpenID#OpenID_Connect_(OIDC) authentication, the app should not manage authentication.** It should, however, be able to read user groups from OIDC user info and manage users' groups through it.
+- [ ] **Fully declarative configuration.** Ideally, this is possible through NixOS modules that you can also use to deploy it. The config file itself can be TOML as I don't care about reading it, just processing. It should also be able to take config from environment variables (takes precedent over config) and possibly CLI options (takes precedent over env).
 
-Change the name of the crate: Choose a good name for your project, and change the name to it in:
-* `Cargo.toml`
-    * Change the `package.name` from `eframe_template` to `your_crate`.
-    * Change the `package.authors`
-* `main.rs`
-    * Change `eframe_template::TemplateApp` to `your_crate::TemplateApp`
-* `index.html`
-    * Change the `<title>eframe template</title>` to `<title>your_crate</title>`. optional.
-* `assets/sw.js`
-  * Change the `'./eframe_template.js'` to `./your_crate.js` (in `filesToCache` array)
-  * Change the `'./eframe_template_bg.wasm'` to `./your_crate_bg.wasm` (in `filesToCache` array)
+### Milestone 2
 
-Alternatively, you can run `fill_template.sh` which will ask for the needed names and email and perform the above patches for you. This is particularly useful if you clone this repository outside GitHub and hence cannot make use of its
-templating function.
+- [ ] **Audit log showing a history of changes.** Should show timestamp, pig name/id, who made the change, and what the change was.
+- [ ] **[MiniMessage](https://docs.advntr.dev/minimessage/index.html) formatting previews.** This will likely require a custom interpreter, unfortunately.
+- [ ] **Mass Add wizard to import en masse.** This should hold your hand through the entire import process, cleaning up formatting, automatic duplicates, manual duplication checks, etc. There should be a way to save your progress.
+- [ ] **OAuth2 authentication for API endpoints.** This should be used to integrate with the plugin itself.
 
-### Learning about egui
+## Client Architecture
 
-`src/app.rs` contains a simple example app. This is just to give some inspiration - most of it can be removed if you like.
+- **[eframe/egui](https://github.com/emilk/eframe_template/tree/main) for GUI.** Obeying the DOM and supporting web browser accessibility features are not a priority with the limited userbase this app is designed for, learning how to code in Rust and egui is more important.
+- **[ehttp](https://github.com/emilk/ehttp?tab=readme-ov-file) for HTTP requests to the server.** Keep an eye on [emilk/ehttp#18](https://github.com/emilk/ehttp/issues/18) and [emilk/ehttp#62](https://github.com/emilk/ehttp/pull/62) for proper authentication cookie support. Alternatively, look into [reqwest](https://github.com/seanmonstar/reqwest).
+- **[Find a GraphQL client library.](https://graphql.org/community/tools-and-libraries/?tags=rust)**
 
-The official egui docs are at <https://docs.rs/egui>. If you prefer watching a video introduction, check out <https://www.youtube.com/watch?v=NtUkr_z7l84>. For inspiration, check out the [the egui web demo](https://emilk.github.io/egui/index.html) and follow the links in it to its source code.
+## Server Architecture
 
-### Testing locally
+- **[Rocket](https://rocket.rs/) for handling HTTP requests.**
+- **[Tantivy](https://github.com/quickwit-oss/tantivy) for handling searches.**
+- **[Diesel](https://diesel.rs/) for database, SQLite backend by default.** Perhaps make it possible to configure the backend to any SQL server, no guarantees it'll work.
+    - ***Do I even need a separate database, or can Tantivy handle it all?*** It's probably best to use Tantivy in conjunction with a database and just have Tantivy store the tokens and IDs where it got it from, see [here](https://jakejscott.com/full-text-search-for-dynamodb-using-lambda-efs-tantivy-and-rust) for a proof of concept.
+- **[Juniper](https://github.com/graphql-rust/juniper/blob/master/juniper_rocket/examples/simple.rs) for serverside GraphQL.**
+- **[Possible OAuth2 library](https://docs.rs/oauth2/4.0.0-alpha.1/oauth2/index.html).** Here are some examples as to how OAuth/OIDC might work: [1](https://github.com/csssuf/rocket_oidc) [2](https://docs.rs/rocket_oauth2/latest/rocket_oauth2/) [3](https://www.shuttle.dev/blog/2023/08/30/using-oauth-with-axum)
 
-Make sure you are using the latest version of stable rust by running `rustup update`.
+## Implementation Notes
 
-`cargo run --release`
+- We likely just need the root path (and 404) on the Rocket web server to serve the compiled WASM files, and all API routes should be behind /api
+    - If the user has already been authenticated and the cookies are present on the browser, the requests should just work, no fancy stuff required
+    - eframe appears to manage its pages via headings instead of routing, so that shouldn't be an issue
 
-On Linux you need to first run:
+## Resources
 
-`sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev`
-
-On Fedora Rawhide you need to run:
-
-`dnf install clang clang-devel clang-tools-extra libxkbcommon-devel pkg-config openssl-devel libxcb-devel gtk3-devel atk fontconfig-devel`
-
-### Web Locally
-
-You can compile your app to [WASM](https://en.wikipedia.org/wiki/WebAssembly) and publish it as a web page.
-
-We use [Trunk](https://trunkrs.dev/) to build for web target.
-1. Install the required target with `rustup target add wasm32-unknown-unknown`.
-2. Install Trunk with `cargo install --locked trunk`.
-3. Run `trunk serve` to build and serve on `http://127.0.0.1:8080`. Trunk will rebuild automatically if you edit the project.
-4. Open `http://127.0.0.1:8080/index.html#dev` in a browser. See the warning below.
-
-> `assets/sw.js` script will try to cache our app, and loads the cached version when it cannot connect to server allowing your app to work offline (like PWA).
-> appending `#dev` to `index.html` will skip this caching, allowing us to load the latest builds during development.
-
-### Web Deploy
-1. Just run `trunk build --release`.
-2. It will generate a `dist` directory as a "static html" website
-3. Upload the `dist` directory to any of the numerous free hosting websites including [GitHub Pages](https://docs.github.com/en/free-pro-team@latest/github/working-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
-4. we already provide a workflow that auto-deploys our app to GitHub pages if you enable it.
-> To enable Github Pages, you need to go to Repository -> Settings -> Pages -> Source -> set to `gh-pages` branch and `/` (root).
->
-> If `gh-pages` is not available in `Source`, just create and push a branch called `gh-pages` and it should be available.
->
-> If you renamed the `main` branch to something else (say you re-initialized the repository with `master` as the initial branch), be sure to edit the github workflows `.github/workflows/pages.yml` file to reflect the change
-> ```yml
-> on:
->   push:
->     branches:
->       - <branch name>
-> ```
-
-You can test the template app at <https://emilk.github.io/eframe_template/>.
-
-## Updating egui
-
-As of 2023, egui is in active development with frequent releases with breaking changes. [eframe_template](https://github.com/emilk/eframe_template/) will be updated in lock-step to always use the latest version of egui.
-
-When updating `egui` and `eframe` it is recommended you do so one version at the time, and read about the changes in [the egui changelog](https://github.com/emilk/egui/blob/master/CHANGELOG.md) and [eframe changelog](https://github.com/emilk/egui/blob/master/crates/eframe/CHANGELOG.md).
+- "How to Write a Web App in Rust" by Garrett Udstrand, see parts [1](https://betterprogramming.pub/how-to-write-a-web-app-in-rust-part-1-3047156660a7) [2](https://medium.com/better-programming/how-to-write-a-web-app-in-rust-part-2-2da195369fc1) [3](https://medium.com/better-programming/building-the-rust-web-app-how-to-use-object-relational-mapper-3af2084555b6) [4](https://medium.com/better-programming/building-the-rust-web-app-proper-error-handling-and-return-values-723f1f07f8cd) [5](https://medium.com/better-programming/building-the-rust-web-app-multiple-users-and-authentication-5ca5988ddfe4) [6](https://medium.com/better-programming/building-the-rust-web-app-finishing-up-1624c9b82f80)
+- ["A Rust web server / frontend setup like it's 2022 (with axum and yew)"](https://robert.kra.hn/posts/2022-04-03_rust-web-wasm/) by Robert Krahn
+- ["A web application completely in Rust"](https://medium.com/@saschagrunert/a-web-application-completely-in-rust-6f6bdb6c4471) by Sascha Grunert
+- ["Rust fullstack web app! WASM + YEW + ROCKET"](https://dev.to/francescoxx/rust-fullstack-web-app-wasm-yew-rocket-3ian) by Francesco Ciulla
+- ["Full-stack Rust: A complete tutorial with examples"](https://blog.logrocket.com/full-stack-rust-a-complete-tutorial-with-examples/) by Mario Zupan
+- ["Building cross-platform GUI apps in Rust using egui"](https://blog.logrocket.com/building-cross-platform-gui-apps-rust-using-egui/) by Mario Zupan
