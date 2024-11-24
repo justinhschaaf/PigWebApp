@@ -21,7 +21,6 @@
 
             # misc. libraries
             openssl
-            pkgconfig
 
             # GUI libs
             libxkbcommon
