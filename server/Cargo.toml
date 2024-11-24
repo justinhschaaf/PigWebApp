@@ -1,0 +1,10 @@
+[package]
+name = "PigWebApp-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+diesel = "2.2.5"
+juniper = "0.16.1"
+rocket = "0.5.1"
+tantivy = "0.22.0"

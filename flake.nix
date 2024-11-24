@@ -27,16 +27,6 @@
             libxkbcommon
             libGL
             fontconfig
-
-            # wayland libraries
-            wayland
-
-            # x11 libraries
-            xorg.libXcursor
-            xorg.libXrandr
-            xorg.libXi
-            xorg.libX11
-
           ];
 
           LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
