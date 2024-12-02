@@ -1,5 +1,5 @@
 [package]
-name = "PigWebApp-client"
+name = "pigweb_client"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,6 +11,9 @@ eframe = { version = "0.29", default-features = false, features = [
     "persistence",   # Enable restoring app state when restarting the app.
 ] }
 log = "0.4"
+
+# One of the upstream dependencies requires getrandom but doesn't enable js, we have to do so manually
+getrandom = { version = "0.2.15", features = ["js"] }
 
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }
