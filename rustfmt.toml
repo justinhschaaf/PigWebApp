@@ -1,0 +1,30 @@
+# https://rust-lang.github.io/rustfmt/
+edition = "2021"
+style_edition = "2021"
+
+# line width
+max_width = 120
+comment_width = 80
+single_line_let_else_max_width = 0
+use_small_heuristics = "Max" # the chain width is also the max width, this does nothing rn
+
+# imports
+imports_granularity = "Module"
+imports_layout = "HorizontalVertical" # this does jack shit
+group_imports = "StdExternalCrate"
+
+# style
+brace_style = "PreferSameLine"
+newline_style = "Unix"
+hex_literal_case = "Upper"
+format_strings = true
+overflow_delimited_expr = true
+struct_lit_single_line = false
+use_field_init_shorthand = true
+where_single_line = true
+
+# comments and docs
+normalize_comments = true
+wrap_comments = true
+normalize_doc_attributes = true
+format_code_in_doc_comments = true
