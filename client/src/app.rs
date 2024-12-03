@@ -1,7 +1,7 @@
-use egui::Layout;
-use egui::TextStyle::Button;
-use egui::WidgetType::SelectableLabel;
 use crate::app::Page::{Logs, Pigs, System, Users};
+use egui::TextStyle::Button;
+use egui::{menu, widgets, Align, CentralPanel, Context, Label, Layout, SelectableLabel, Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget};
+use egui_extras::Column;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 
@@ -25,6 +25,10 @@ pub struct PigWebClient {
     #[serde(skip)]
     query: String,
 
+    // The currently selected row
+    #[serde(skip)]
+    row_selection: Option<usize>,
+
 }
 
 impl Default for PigWebClient {
@@ -32,6 +36,7 @@ impl Default for PigWebClient {
         Self {
             page: Pigs,
             query: String::default(),
+            row_selection: None,
         }
     }
 }
@@ -51,19 +56,19 @@ impl PigWebClient {
         Default::default()
     }
 
-    fn populate_menu(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+    fn populate_menu(&mut self, ctx: &Context, ui: &mut Ui) {
 
         ui.add_space(2.0);
 
-        egui::widgets::global_theme_preference_switch(ui);
+        widgets::global_theme_preference_switch(ui);
 
         ui.separator();
 
         // TODO only show pages you have access to
         ui.selectable_value(&mut self.page, Pigs, " 🐖 Pigs ");
-        ui.add_enabled(false, egui::SelectableLabel::new(false, " 📄 Logs "));
-        ui.add_enabled(false, egui::SelectableLabel::new(false, " 😐 Users "));
-        ui.add_enabled(false, egui::SelectableLabel::new(false, " ⛭ System "));
+        ui.add_enabled(false, SelectableLabel::new(false, " 📄 Logs "));
+        ui.add_enabled(false, SelectableLabel::new(false, " 😐 Users "));
+        ui.add_enabled(false, SelectableLabel::new(false, " ⛭ System "));
 
         // Show debug warning
         if cfg!(debug_assertions) {
@@ -73,18 +78,63 @@ impl PigWebClient {
 
         // This right aligns it on the same row
         let is_web = cfg!(target_arch = "wasm32");
-        ui.with_layout(Layout::right_to_left(egui::Align::RIGHT), |ui| {
+        ui.with_layout(Layout::right_to_left(Align::RIGHT), |ui| {
 
             // Show the quit button if somehow this gets run on desktop
             // (you shouldn't, dumbass)
             if !is_web && ui.button("🗙").clicked() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                ctx.send_viewport_cmd(ViewportCommand::Close);
             }
 
             // Logout
-            ui.button("⎆");
+            if ui.button("⎆").clicked() {
+                println!("TODO"); // TODO implement me
+            }
 
         });
+
+    }
+
+    fn populate_sidebar(&mut self, ctx: &Context, ui: &mut Ui) {
+
+        ui.add_space(8.0);
+        ui.heading("The Pig List");
+        ui.add_space(8.0);
+
+        ui.horizontal(|ui| {
+            ui.add(TextEdit::singleline(&mut self.query).hint_text("Search"));
+            if ui.button("+ Add").clicked() {
+                println!("TODO"); // TODO implement me
+            }
+        });
+
+        ui.add_space(4.0);
+
+        egui_extras::TableBuilder::new(ui)
+            .striped(true)
+            .resizable(false)
+            .column(Column::remainder())
+            .sense(Sense::click())
+            .cell_layout(Layout::left_to_right(Align::Center))
+            .body(|mut body| {
+                body.rows(18.0, 1000, |mut row| {
+
+                    let i = row.index();
+                    row.set_selected(self.row_selection.is_some() && self.row_selection.unwrap() == i);
+
+                    // Make sure we can't select the text or else we can't click the row behind
+                    row.col(|ui| {
+                        Label::new(format!("This is line {i}"))
+                            .selectable(false)
+                            .ui(ui);
+                    });
+
+                    if row.response().clicked() {
+                        self.row_selection = Some(i);
+                    }
+
+                });
+            });
 
     }
 
@@ -98,50 +148,21 @@ impl eframe::App for PigWebClient {
     }
 
     /// Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
-        egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
+        TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            menu::bar(ui, |ui| {
                 self.populate_menu(ctx, ui);
             });
         });
 
-        egui::SidePanel::left("left_panel").show(ctx, |ui| {
-
-            // The central panel the region left after adding TopPanel's and SidePanel's
-
-            ui.add_space(8.0);
-            ui.heading("The Pig List");
-            ui.add_space(8.0);
-
-            ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut self.query).hint_text("Search"));
-                ui.button("+ Add");
-            });
-
-            ui.add_space(4.0);
-
-            egui::ScrollArea::vertical()
-                .auto_shrink(false)
-                .show(ui, |ui| {
-                    egui::Grid::new("pig_list")
-                        .num_columns(1)
-                        .striped(true)
-                        .show(ui, |ui| {
-                            for i in 0..1000 {
-                                ui.with_layout(Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                                    ui.label(format!("This is line {i}"));
-                                });
-                                ui.end_row();
-                            }
-                        });
-                });
-
+        SidePanel::left("left_panel").show(ctx, |ui| {
+            self.populate_sidebar(ctx, ui);
         });
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ctx, |ui| {
             ui.label("hi :3");
         });
 
