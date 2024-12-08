@@ -1,3 +1,35 @@
-fn main() {
-    println!("Hello, world!");
+#[macro_use]
+extern crate rocket;
+
+use rocket::fs::NamedFile;
+use rocket::response::status::NotFound;
+use std::path::PathBuf;
+
+// Create a route for any url relative to /
+// https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md
+#[get("/<path..>")]
+async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
+    let path = PathBuf::from("../client/dist").join(path);
+    match NamedFile::open(path).await {
+        Ok(f) => Ok(f),
+        Err(_) => index().await, // If no file is found, route to index
+    }
+}
+
+// Set the index route
+// https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md
+#[get("/")]
+async fn index() -> Result<NamedFile, NotFound<String>> {
+    NamedFile::open("../client/dist/index.html").await.map_err(|e| NotFound(e.to_string()))
+}
+
+#[get("/api")]
+async fn api() -> String {
+    String::from("Hello World")
+}
+
+// Start the web sever using the launch macro
+#[launch]
+fn rocket() -> _ {
+    rocket::build().mount("/", routes![index, static_files, api])
 }

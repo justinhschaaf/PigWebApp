@@ -52,3 +52,4 @@ I'm mainly going this far to write the entire app from the ground up to make sur
 - ["Rust fullstack web app! WASM + YEW + ROCKET"](https://dev.to/francescoxx/rust-fullstack-web-app-wasm-yew-rocket-3ian) by Francesco Ciulla
 - ["Full-stack Rust: A complete tutorial with examples"](https://blog.logrocket.com/full-stack-rust-a-complete-tutorial-with-examples/) by Mario Zupan
 - ["Building cross-platform GUI apps in Rust using egui"](https://blog.logrocket.com/building-cross-platform-gui-apps-rust-using-egui/) by Mario Zupan
+- ["Part 1: Building a WebSite in Rust Using Rocket and Yew"](https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md)
