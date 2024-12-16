@@ -1,10 +1,10 @@
 use crate::app::Page::{Logs, Pigs, System, Users};
 use egui::TextStyle::Button;
 use egui::{
-    menu, widgets, Align, CentralPanel, Context, Label, Layout, SelectableLabel, Sense, SidePanel, TextEdit,
-    TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, vec2, widgets, Align, CentralPanel, Context, Direction, Label, Layout, ScrollArea, SelectableLabel, Sense,
+    SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
-use egui_extras::Column;
+use egui_extras::{Column, TableBody};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 
@@ -123,14 +123,71 @@ impl PigWebClient {
                 });
             });
     }
+
+    fn populate_center(&mut self, ctx: &Context, ui: &mut Ui) {
+        ui.set_max_width(540.0);
+        // Title
+        ui.add_space(8.0);
+        ui.heading("Pig Name Here");
+        ui.add_space(8.0);
+
+        // Pig action buttons
+        if ui.button("💾 Save").clicked() {
+            println!("TODO"); // TODO implement me
+        }
+
+        ui.add_space(4.0);
+
+        egui_extras::TableBuilder::new(ui)
+            .striped(true)
+            .resizable(false)
+            .column(Column::initial(180.0))
+            .column(Column::remainder())
+            .cell_layout(Layout::left_to_right(Align::Center))
+            .body(|mut body| {
+                self.add_pig_properties_row(&mut body, 40.0, "id", |ui| {
+                    ui.code("abcdefghijklmnopqrstuvwx");
+                });
+
+                self.add_pig_properties_row(&mut body, 80.0, "name", |ui| {
+                    // yes, all this is necessary
+                    // centered_and_justified makes the text box fill the value cell
+                    // ScrollArea lets you scroll when it's too big
+                    ui.centered_and_justified(|ui| {
+                        ScrollArea::vertical().show(ui, |ui| {
+                            ui.text_edit_multiline(&mut self.query);
+                        });
+                    });
+                });
+
+                self.add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
+                    ui.code("TODO dropdown");
+                });
+
+                self.add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
+                    ui.label("2024-12-24");
+                });
+            });
+    }
+
+    fn add_pig_properties_row(
+        &mut self,
+        body: &mut TableBody,
+        height: f32,
+        label: &str,
+        add_value: impl FnOnce(&mut Ui),
+    ) {
+        body.row(height, |mut row| {
+            row.col(|ui| {
+                ui.label(label);
+            });
+
+            row.col(|ui| add_value);
+        });
+    }
 }
 
 impl eframe::App for PigWebClient {
-    /// Called by the framework to save state before shutdown.
-    fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
@@ -147,7 +204,18 @@ impl eframe::App for PigWebClient {
         });
 
         CentralPanel::default().show(ctx, |ui| {
-            ui.label("hi :3");
+            ui.vertical_centered(|ui| {
+                self.populate_center(ctx, ui);
+            });
         });
+    }
+
+    /// Called by the framework to save state before shutdown.
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, eframe::APP_KEY, self);
+    }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        visuals.extreme_bg_color.to_normalized_gamma_f32()
     }
 }
