@@ -1,2 +1,16 @@
+# see all possible options on https://doc.rust-lang.org/cargo/reference/workspaces.html
 [workspace]
 members = ["client", "common", "server"]
+resolver = "2"
+
+# common package attributes
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["justinhschaaf"]
+readme = "README.md"
+
+# shared dependencies
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+uuid = { version = "1.11.0", features = ["serde"] }

@@ -1,6 +1,10 @@
 [package]
 name = "pigweb_common"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
 
 [dependencies]
+serde.workspace = true
+uuid.workspace = true

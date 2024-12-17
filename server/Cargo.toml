@@ -1,10 +1,14 @@
 [package]
 name = "pigweb_server"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
 
 [dependencies]
+pigweb_common = { path = "../common" }
+serde.workspace = true
+uuid.workspace = true
 diesel = "2.2.5"
-juniper = "0.16.1"
-rocket = "0.5.1"
+rocket = { version = "0.5.1", features = ["json"] }
 tantivy = "0.22.0"
