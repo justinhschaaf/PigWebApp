@@ -1,8 +1,8 @@
 use crate::app::Page::{Logs, Pigs, System, Users};
 use egui::TextStyle::Button;
 use egui::{
-    menu, vec2, widgets, Align, CentralPanel, Context, Direction, Label, Layout, ScrollArea, SelectableLabel, Sense,
-    SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, vec2, widgets, Align, CentralPanel, Context, Direction, Grid, Label, Layout, ScrollArea, SelectableLabel,
+    Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
 use egui_extras::{Column, TableBody};
 
@@ -132,9 +132,15 @@ impl PigWebClient {
         ui.add_space(8.0);
 
         // Pig action buttons
-        if ui.button("💾 Save").clicked() {
-            println!("TODO"); // TODO implement me
-        }
+        ui.vertical_centered_justified(|ui| {
+            if ui.button("💾 Save").clicked() {
+                println!("TODO"); // TODO implement me
+            }
+
+            if ui.button("🗑 Delete").clicked() {
+                println!("TODO"); // TODO implement me
+            }
+        });
 
         ui.add_space(4.0);
 
@@ -145,11 +151,11 @@ impl PigWebClient {
             .column(Column::remainder())
             .cell_layout(Layout::left_to_right(Align::Center))
             .body(|mut body| {
-                self.add_pig_properties_row(&mut body, 40.0, "id", |ui| {
+                add_pig_properties_row(&mut body, 40.0, "id", |ui| {
                     ui.code("abcdefghijklmnopqrstuvwx");
                 });
 
-                self.add_pig_properties_row(&mut body, 80.0, "name", |ui| {
+                add_pig_properties_row(&mut body, 80.0, "name", |ui| {
                     // yes, all this is necessary
                     // centered_and_justified makes the text box fill the value cell
                     // ScrollArea lets you scroll when it's too big
@@ -160,30 +166,14 @@ impl PigWebClient {
                     });
                 });
 
-                self.add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
+                add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
                     ui.code("TODO dropdown");
                 });
 
-                self.add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
+                add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
                     ui.label("2024-12-24");
                 });
             });
-    }
-
-    fn add_pig_properties_row(
-        &mut self,
-        body: &mut TableBody,
-        height: f32,
-        label: &str,
-        add_value: impl FnOnce(&mut Ui),
-    ) {
-        body.row(height, |mut row| {
-            row.col(|ui| {
-                ui.label(label);
-            });
-
-            row.col(|ui| add_value);
-        });
     }
 }
 
@@ -218,4 +208,16 @@ impl eframe::App for PigWebClient {
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
         visuals.extreme_bg_color.to_normalized_gamma_f32()
     }
+}
+
+// This is out here because putting it in the struct causes a self-reference error
+// it doesn't even need to use PigWebClient it's a fucking util method
+fn add_pig_properties_row(body: &mut TableBody, height: f32, label: &str, add_value: impl FnOnce(&mut Ui)) {
+    body.row(height, |mut row| {
+        row.col(|ui| {
+            ui.label(label);
+        });
+
+        row.col(add_value);
+    });
 }
