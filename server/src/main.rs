@@ -55,7 +55,7 @@ async fn api_pig_delete(id: &str) -> (Status, &'static str) {
     (Status::NoContent, "Not yet implemented!")
 }
 
-#[get("/api/pigs/fetch?<query>")]
+#[get("/api/pigs/fetch?<query..>")]
 async fn api_pig_fetch(query: PigQuery<'_>) -> Result<Json<Vec<Pig<'_>>>, (Status, &'static str)> {
     // Name should be a search with Tantivy, ID should fetch pigs by their ID
     // Add a limit to the number of results? we don't wanna return the whole fucking database
