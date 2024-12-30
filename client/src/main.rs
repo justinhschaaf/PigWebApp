@@ -44,11 +44,7 @@ fn main() {
             .expect("the_canvas_id was not a HtmlCanvasElement");
 
         let start_result = eframe::WebRunner::new()
-            .start(
-                canvas,
-                web_options,
-                Box::new(|cc| Ok(Box::new(pigweb_client::PigWebClient::new(cc)))),
-            )
+            .start(canvas, web_options, Box::new(|cc| Ok(Box::new(pigweb_client::PigWebClient::new(cc)))))
             .await;
 
         // Remove the loading text and spinner:

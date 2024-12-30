@@ -1,0 +1,8 @@
+# Build the client using Trunk instead of Cargo
+# These *should* inherit the other options from the parent makefile, such as the args
+
+[tasks.build-dev]
+command = "trunk"
+
+[tasks.build-prod]
+command = "trunk"

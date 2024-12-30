@@ -35,7 +35,7 @@ server-side, as Pocketbase doesn't support serverside functions.
   formatting, automatic duplicates, manual duplication checks, etc. There should be a way to save your progress.
 - [ ] **OAuth2 authentication for API endpoints.** This should be used to integrate with the plugin itself.
 
-## Client Architecture
+### Client Architecture
 
 - **[eframe/egui](https://github.com/emilk/eframe_template/tree/main) for GUI.** Obeying the DOM and supporting web
   browser accessibility features are not a priority with the limited userbase this app is designed for, learning how to
@@ -45,7 +45,7 @@ server-side, as Pocketbase doesn't support serverside functions.
   and [emilk/ehttp#62](https://github.com/emilk/ehttp/pull/62) for proper authentication cookie support. Alternatively,
   look into [reqwest](https://github.com/seanmonstar/reqwest).
 
-## Server Architecture
+### Server Architecture
 
 - **[Rocket](https://rocket.rs/) for handling HTTP requests.**
 - **[Tantivy](https://github.com/quickwit-oss/tantivy) for handling searches.**
@@ -58,14 +58,44 @@ server-side, as Pocketbase doesn't support serverside functions.
 - **[Possible OAuth2 library](https://docs.rs/oauth2/4.0.0-alpha.1/oauth2/index.html).** Here are some examples as to
   how OAuth/OIDC might
   work: [1](https://github.com/csssuf/rocket_oidc) [2](https://docs.rs/rocket_oauth2/latest/rocket_oauth2/) [3](https://www.shuttle.dev/blog/2023/08/30/using-oauth-with-axum)
+- **[Figment](https://docs.rs/figment/0.10.19/figment/) for handling configuration.** This is also what Rocket uses, see [here](https://rocket.rs/guide/v0.5/configuration/) for its configuration. It'll probably be easiest to have one set of config values/config file for the app and another for Rocket so we don't have to reimplement its options.
 
-## Implementation Notes
+### Implementation Notes
 
 - We likely just need the root path (and 404) on the Rocket web server to serve the compiled WASM files, and all API
   routes should be behind /api
     - If the user has already been authenticated and the cookies are present on the browser, the requests should just
       work, no fancy stuff required
     - eframe appears to manage its pages via headings instead of routing, so that shouldn't be an issue
+
+## Workspace
+
+### Setup
+
+To simplify workspace setup and installing dependencies, most of it is managed for you with Nix and direnv.
+
+1. **If you're not using NixOS,** install the Nix package manager for your system using the [Determinate Nix Installer](https://github.com/DeterminateSystems/nix-installer).
+
+2. **Install [direnv](https://direnv.net/docs/installation.html) for your system.**
+
+    - For NixOS, a better implementation is provided by [nix-community/nix-direnv](https://github.com/nix-community/nix-direnv).
+
+3. **Add direnv integration to your IDE.** For [RustRover](https://www.jetbrains.com/rust/), I recommend [Direnv Integration](https://plugins.jetbrains.com/plugin/15285-direnv-integration). It doesn't work perfectly, but it still works. Be sure to follow the setup instructions for it.
+
+4. **`cd` into the project dir and run `direnv allow`.** If you need to manually enter the dev shell, use `nix develop`.
+
+> [!IMPORTANT]
+> Assume ALL commands hereafter are in the Nix shell unless otherwise stated.
+
+### Developing
+
+Run `cargo make serve` to open a development server on [localhost:8000](http://localhost:8000), allowing you to preview changes in (almost) real time.
+
+### Building
+
+Builds are configured using [cargo-make](https://github.com/sagiegurari/cargo-make) to avoid ugly wrapper scripts.
+
+For a production build, run `cargo make -p production`. Nix build instructions coming eventually.
 
 ## Resources
 

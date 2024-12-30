@@ -27,7 +27,7 @@ async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
 // https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md
 #[get("/")]
 async fn index() -> Result<NamedFile, NotFound<String>> {
-    NamedFile::open("../client/dist/index.html").await.map_err(|e| NotFound(e.to_string()))
+    NamedFile::open("dist/index.html").await.map_err(|e| NotFound(e.to_string()))
 }
 
 #[get("/api")]

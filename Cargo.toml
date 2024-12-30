@@ -1,6 +1,7 @@
 # see all possible options on https://doc.rust-lang.org/cargo/reference/workspaces.html
 [workspace]
 members = ["client", "common", "server"]
+default-members = ["server"]
 resolver = "2"
 
 # common package attributes
@@ -14,3 +15,12 @@ readme = "README.md"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "1.11.0", features = ["serde"] }
+
+# profiles need to be defined at a higher level than individual workspace members
+# this was previously in the client member
+[profile.release]
+opt-level = 2 # fast and small wasm
+
+# Optimize all dependencies even in debug builds:
+[profile.dev.package."*"]
+opt-level = 2

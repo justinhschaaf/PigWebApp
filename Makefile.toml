@@ -1,0 +1,85 @@
+[config]
+# Make it so by default, commands are run at the parent level instead of in each individual workspace
+default_to_workspace = false
+
+# Don't load the builtin tasks because they're fucking broken
+skip_core_tasks = true
+
+[env]
+# Let workspace members inherit these options
+# https://github.com/sagiegurari/cargo-make?tab=readme-ov-file#automatically-extend-workspace-makefile
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+
+# Don't bother trying to compile the common member on its own
+CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = ["common"]
+
+[env.development]
+TARGET_SUBDIR = "debug"
+
+[env.production]
+TARGET_SUBDIR = "release"
+
+[tasks.default]
+alias = "build-flow"
+
+[tasks.build-flow]
+description = "Builds the workspace member projects and assembles them to prepare a single folder for distribution."
+dependencies = [
+    "build-members",
+    "move-client-dist"
+]
+
+[tasks.serve]
+description = "Runs a live web server which recompiles and reruns itself when changes to the source code are made."
+watch = true
+dependencies = [
+    "build-members",
+    "move-client-dist",
+    "run-server"
+]
+
+[tasks.format]
+command = "cargo"
+args = ["fmt", "--", "--emit=files"]
+
+[tasks.clean]
+command = "cargo"
+args = ["clean"]
+
+[tasks.build-members]
+private = true
+description = "Runs the build task on all workspace members."
+run_task = { name = "build", fork = true }
+
+[tasks.build]
+description = "Meant to build an individual workspace member."
+workspace = true
+dependencies = [
+    "format",
+    "clean",
+    "build-dev",
+    "build-prod"
+]
+
+[tasks.build-dev]
+private = true
+condition = { profiles = ["development"] }
+command = "cargo"
+args = ["build"]
+
+[tasks.build-prod]
+private = true
+condition = { profiles = ["production"] }
+command = "cargo"
+args = ["build", "--release"]
+
+[tasks.move-client-dist]
+private = true
+command = "mv"
+args = ["client/dist", "target/${TARGET_SUBDIR}/"]
+
+# TODO set cwd to a run directory, add config option for client path
+[tasks.run-server]
+private = true
+cwd = "target/${TARGET_SUBDIR}/"
+command = "./pigweb_server"
