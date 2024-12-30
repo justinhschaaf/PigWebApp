@@ -19,12 +19,17 @@
         in with pkgs; {
             devShells.default = mkShell rec {
                 buildInputs = [
-                    # Rust
-                    cargo-make
-                    cargo-watch # cargo-make's watch feature uses this
+                    # rust
                     rust
-                    rustfmt
-                    trunk
+
+                    # rust tools
+                    cargo-make # build tool
+                    cargo-watch # cargo-make's watch feature uses this
+                    rustfmt # code formatting
+                    trunk # WASM compilation for the client module
+
+                    # misc. tools
+                    tmux
 
                     # misc. libraries
                     openssl

@@ -98,8 +98,16 @@ command = "cp"
 args = ["-r", "client/dist", "target/${TARGET_SUBDIR}/"]
 dependencies = ["remove-target-client-dist"]
 
+[tasks.kill-old-server]
+private = true
+ignore_errors = true # this will err if there isn't already a session with the name, which is fine
+command = "tmux"
+args = ["kill-session", "-t", "pigweb"]
+
 # TODO set cwd to a run directory, add config option for client path
 [tasks.run-server]
 private = true
 cwd = "target/${TARGET_SUBDIR}/"
-command = "./pigweb_server"
+command = "tmux"
+args = ["new-session", "-d", "-s", "pigweb", "./pigweb_server"]
+dependencies = ["kill-old-server"]
