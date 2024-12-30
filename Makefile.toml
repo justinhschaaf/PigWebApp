@@ -25,6 +25,7 @@ alias = "build-flow"
 [tasks.build-flow]
 description = "Builds the workspace member projects and assembles them to prepare a single folder for distribution."
 dependencies = [
+    "clean",
     "build-members",
     "move-client-dist"
 ]
@@ -56,7 +57,6 @@ description = "Meant to build an individual workspace member."
 workspace = true
 dependencies = [
     "format",
-    "clean",
     "build-dev",
     "build-prod"
 ]
@@ -73,10 +73,16 @@ condition = { profiles = ["production"] }
 command = "cargo"
 args = ["build", "--release"]
 
+[tasks.remove-target-client-dist]
+private = true
+command = "rm"
+args = ["-rf", "target/${TARGET_SUBDIR}/dist"]
+
 [tasks.move-client-dist]
 private = true
-command = "mv"
-args = ["client/dist", "target/${TARGET_SUBDIR}/"]
+command = "cp"
+args = ["-r", "client/dist", "target/${TARGET_SUBDIR}/"]
+dependencies = ["remove-target-client-dist"]
 
 # TODO set cwd to a run directory, add config option for client path
 [tasks.run-server]
