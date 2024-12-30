@@ -44,8 +44,22 @@ command = "cargo"
 args = ["fmt", "--", "--emit=files"]
 
 [tasks.clean]
+description = "Removes the directories used for build outputs, mainly \"target\" and \"client/dist\"."
+dependencies = [
+    "clean-cargo",
+    "clean-client-dist"
+]
+
+[tasks.clean-cargo]
+private = true
 command = "cargo"
 args = ["clean"]
+
+[tasks.clean-client-dist]
+private = true
+ignore_errors = true # just in case rm throws an error if it can't find client/dist
+command = "rm"
+args = ["-rf", "client/dist"]
 
 [tasks.build-members]
 private = true
