@@ -1,0 +1,19 @@
+name: Feature Request
+description: "Something to improve."
+labels: [ "feature" ]
+assignees: [ "justinhschaaf" ]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summarize the request
+      description: "What would you like to see happen?"
+    validations:
+      required: true
+  - type: textarea
+    id: usage
+    attributes:
+      label: Use case
+      description: "How would this feature be used? Who would it benefit? What problem would it solve?"
+    validations:
+      required: true
