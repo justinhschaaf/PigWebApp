@@ -3,14 +3,10 @@ extern crate rocket;
 mod pigapi;
 
 use crate::pigapi::{get_pig_api_routes, TempPigs};
-use pigweb_common::Pig;
 use rocket::fs::NamedFile;
-use rocket::http::Status;
-use rocket::response::status::{Created, NotFound};
-use rocket::serde::json::Json;
+use rocket::response::status::NotFound;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use uuid::Uuid;
 
 // Create a route for any url relative to /
 // https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md

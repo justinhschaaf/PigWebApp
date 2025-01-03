@@ -6,8 +6,7 @@ use rocket::serde::json::Json;
 use rocket::{Route, State};
 use std::str::FromStr;
 use std::sync::Mutex;
-use std::time::Instant;
-use tantivy::tokenizer::TokenStream;
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::{uuid, Uuid};
 
 pub struct TempPigs {
@@ -87,17 +86,56 @@ pub fn get_pig_api_routes() -> Vec<Route> {
 }
 
 #[post("/create?<name>")]
-async fn api_pig_create(name: &str) -> Result<Created<Json<Pig>>, (Status, &'static str)> {
+async fn api_pig_create(
+    temp_pigs_mut: &State<Mutex<TempPigs>>,
+    name: &str,
+) -> Result<Created<Json<Pig>>, (Status, &'static str)> {
     // Server should generate a UUID, determine the creating user and timestamp, save it to the DB, and return the final object
-    Err((Status::NotImplemented, "Not yet implemented!"))
+    // Deduplicating names should be your responsibility, dipshit
+    // TODO deduplicate uuids?
+
+    // Create the new pig
+    let pig = Pig {
+        id: Uuid::new_v4(),
+        name: name.to_owned(),
+        // https://www.cloudhadoop.com/rust-current-timestamp-millisecs-example#rust-current-time-in-milliseconds
+        created: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
+    };
+
+    // We have to clone the pig for the json response because Json() wants ownership of it
+    let res = Json(pig.clone());
+
+    // Add the pig to the list
+    let mut temp_pigs = temp_pigs_mut.lock().unwrap();
+    temp_pigs.pigs.push(pig);
+
+    // Respond with a path to the pig and the object itself, unfortunately the location path is mandatory
+    // TODO does this HAVE to be a full URL, or is this fine?
+    Ok(Created::new(format!("/api/pigs/fetch?id={}", res.id.to_string())).body(res))
 }
 
 #[put("/update", data = "<pig>")]
-async fn api_pig_update(pig: Json<Pig>) -> (Status, &'static str) {
-    (Status::NotImplemented, "Not yet implemented!")
+async fn api_pig_update(temp_pigs_mut: &State<Mutex<TempPigs>>, pig: Json<Pig>) -> (Status, &'static str) {
+    // TODO add more checks to make sure read-only data isn't modified, we're testing rn so it's fine but later it won't be
+
+    let uuid = pig.id;
+
+    let mut temp_pigs = temp_pigs_mut.lock().unwrap();
+
+    for (i, e) in temp_pigs.pigs.iter().enumerate() {
+        if e.id == uuid {
+            temp_pigs.pigs.remove(i);
+            temp_pigs.pigs.insert(i, pig.into_inner());
+
+            // there should only be one pig with this uuid, we need not continue
+            return (Status::Ok, "Pig successfully updated");
+        }
+    }
+
+    (Status::NotFound, "Unable to find pig")
 }
 
-#[delete("/delete?<id>")] // TODO https://marabos.nl/atomics/basics.html https://github.com/rwf2/Rocket/issues/359
+#[delete("/delete?<id>")]
 async fn api_pig_delete(temp_pigs_mut: &State<Mutex<TempPigs>>, id: &str) -> (Status, &'static str) {
     let uuid = match Uuid::from_str(id) {
         Ok(i) => i,
