@@ -14,7 +14,9 @@ eframe = { version = "0.30.0", default-features = false, features = [
     "glow", # Use the glow rendering backend. Alternative: "wgpu".
     "persistence", # Enable restoring app state when restarting the app.
 ] }
-log = "0.4"
+ehttp = "0.5.0"
+log.workspace = true
+poll-promise = { version = "0.3.0", features = ["web"] }
 
 # You only need serde if you want app persistence:
 serde.workspace = true

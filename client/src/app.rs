@@ -5,6 +5,8 @@ use egui::{
     Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
 use egui_extras::{Column, TableBody};
+use pigweb_common::Pig;
+use poll_promise::Promise;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 
@@ -26,14 +28,18 @@ pub struct PigWebClient {
     #[serde(skip)]
     query: String,
 
+    // The current list of search results
+    #[serde(skip)]
+    query_results: Promise<Vec<Pig>>,
+
     // The currently selected row
     #[serde(skip)]
-    row_selection: Option<usize>,
+    selection: Option<Pig>,
 }
 
 impl Default for PigWebClient {
     fn default() -> Self {
-        Self { page: Pigs, query: String::default(), row_selection: None }
+        Self { page: Pigs, query: String::default(), query_results: Promise::from_ready(Vec::new()), selection: None }
     }
 }
 
@@ -93,7 +99,7 @@ impl PigWebClient {
         ui.add_space(8.0);
 
         ui.horizontal(|ui| {
-            ui.add(TextEdit::singleline(&mut self.query).hint_text("Search"));
+            ui.add(TextEdit::singleline(&mut self.query).hint_text("Search")); // TODO edit = query
             if ui.button("+ Add").clicked() {
                 println!("TODO"); // TODO implement me
             }
@@ -101,79 +107,99 @@ impl PigWebClient {
 
         ui.add_space(4.0);
 
-        egui_extras::TableBuilder::new(ui)
-            .striped(true)
-            .resizable(false)
-            .column(Column::remainder())
-            .sense(Sense::click())
-            .cell_layout(Layout::left_to_right(Align::Center))
-            .body(|mut body| {
-                body.rows(18.0, 1000, |mut row| {
-                    let i = row.index();
-                    row.set_selected(self.row_selection.is_some() && self.row_selection.unwrap() == i);
+        match self.query_results.ready() {
+            // Only render the results table if we have results to show
+            Some(pigs) => {
+                if !pigs.is_empty() {
+                    egui_extras::TableBuilder::new(ui)
+                        .striped(true)
+                        .resizable(false)
+                        .column(Column::remainder())
+                        .sense(Sense::click())
+                        .cell_layout(Layout::left_to_right(Align::Center))
+                        .body(|mut body| {
+                            for pig in pigs {
+                                body.row(18.0, |mut row| {
+                                    // idfk why this wants us to clone selection, otherwise self is supposedly moved
+                                    row.set_selected(self.selection.as_mut().is_some_and(|select| select.id == pig.id));
 
-                    // Make sure we can't select the text or else we can't click the row behind
-                    row.col(|ui| {
-                        Label::new(format!("This is line {i}")).selectable(false).ui(ui);
-                    });
+                                    // Make sure we can't select the text or else we can't click the row behind
+                                    row.col(|ui| {
+                                        Label::new(&pig.name).selectable(false).ui(ui);
+                                    });
 
-                    if row.response().clicked() {
-                        self.row_selection = Some(i);
-                    }
-                });
-            });
+                                    if row.response().clicked() {
+                                        self.selection = Some(pig.clone());
+                                    }
+                                });
+                            }
+                        });
+                }
+            }
+            // Still waiting on results
+            // This should only happen when waiting for results, since otherwise it'll be an empty vec
+            None => {
+                // TODO add loading
+            }
+        }
     }
 
     fn populate_center(&mut self, ctx: &Context, ui: &mut Ui) {
         ui.set_max_width(540.0);
-        // Title
-        ui.add_space(8.0);
-        ui.heading("Pig Name Here");
-        ui.add_space(8.0);
 
-        // Pig action buttons
-        ui.vertical_centered_justified(|ui| {
-            if ui.button("💾 Save").clicked() {
-                println!("TODO"); // TODO implement me
-            }
+        if self.selection.is_some() {
+            // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
+            let mut pig = self.selection.as_mut().unwrap();
 
-            if ui.button("🗑 Delete").clicked() {
-                println!("TODO"); // TODO implement me
-            }
-        });
+            // Title
+            ui.add_space(8.0);
+            ui.heading(pig.name.to_owned()); // convert to owned since we transfer a mut reference later
+            ui.add_space(8.0);
 
-        ui.add_space(4.0);
+            // Pig action buttons
+            ui.vertical_centered_justified(|ui| {
+                if ui.button("💾 Save").clicked() {
+                    println!("TODO"); // TODO implement me
+                }
 
-        egui_extras::TableBuilder::new(ui)
-            .striped(true)
-            .resizable(false)
-            .column(Column::initial(180.0))
-            .column(Column::remainder())
-            .cell_layout(Layout::left_to_right(Align::Center))
-            .body(|mut body| {
-                add_pig_properties_row(&mut body, 40.0, "id", |ui| {
-                    ui.code("abcdefghijklmnopqrstuvwx");
-                });
+                if ui.button("🗑 Delete").clicked() {
+                    println!("TODO"); // TODO implement me
+                }
+            });
 
-                add_pig_properties_row(&mut body, 80.0, "name", |ui| {
-                    // yes, all this is necessary
-                    // centered_and_justified makes the text box fill the value cell
-                    // ScrollArea lets you scroll when it's too big
-                    ui.centered_and_justified(|ui| {
-                        ScrollArea::vertical().show(ui, |ui| {
-                            ui.text_edit_multiline(&mut self.query);
+            ui.add_space(4.0);
+
+            egui_extras::TableBuilder::new(ui)
+                .striped(true)
+                .resizable(false)
+                .column(Column::initial(180.0))
+                .column(Column::remainder())
+                .cell_layout(Layout::left_to_right(Align::Center))
+                .body(|mut body| {
+                    add_pig_properties_row(&mut body, 40.0, "id", |ui| {
+                        ui.code(pig.id.to_string());
+                    });
+
+                    add_pig_properties_row(&mut body, 80.0, "name", |ui| {
+                        // yes, all this is necessary
+                        // centered_and_justified makes the text box fill the value cell
+                        // ScrollArea lets you scroll when it's too big
+                        ui.centered_and_justified(|ui| {
+                            ScrollArea::vertical().show(ui, |ui| {
+                                ui.text_edit_multiline(&mut pig.name);
+                            });
                         });
                     });
-                });
 
-                add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
-                    ui.code("TODO dropdown");
-                });
+                    add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
+                        ui.code("TODO dropdown");
+                    });
 
-                add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
-                    ui.label("2024-12-24");
+                    add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
+                        ui.label(pig.created.to_string()); // TODO chrono https://docs.rs/chrono/latest/chrono/
+                    });
                 });
-            });
+        }
     }
 }
 

@@ -13,6 +13,7 @@ readme = "README.md"
 
 # shared dependencies
 [workspace.dependencies]
+log = "0.4"
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "1.11.0", features = ["serde"] }
 

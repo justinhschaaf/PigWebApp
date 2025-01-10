@@ -34,6 +34,7 @@ async fn api() -> &'static str {
 // Start the web sever using the launch macro
 #[launch]
 fn rocket() -> _ {
+    // TODO implement better logging with log
     rocket::build()
         .manage(Mutex::new(TempPigs::default()))
         .mount("/", routes![index, static_files, api])
