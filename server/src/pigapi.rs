@@ -76,6 +76,7 @@ impl Default for TempPigs {
 
 #[derive(Debug, PartialEq, FromForm)]
 struct PigQuery {
+    // TODO add limit on number of results here? maybe upper and lower bound? idfk
     // Option is necessary to make it so both args aren't absolutely required
     id: Option<Vec<String>>,
     name: Option<String>,
