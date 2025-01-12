@@ -1,19 +1,12 @@
-use crate::app::Page::{Logs, Pigs, System, Users};
-use crate::data::ClientDataHandler;
-use egui::TextStyle::Button;
-use egui::ViewportCommand::EnableButtons;
+use crate::app::Page::Pigs;
+use crate::data::{ClientDataHandler, Status};
 use egui::{
-    menu, vec2, widgets, Align, CentralPanel, Context, Direction, Grid, Id, Label, Layout, Modal, ModalResponse,
-    ScrollArea, SelectableLabel, Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, widgets, Align, CentralPanel, Context, Id, Label, Layout, Modal, ModalResponse, ScrollArea, SelectableLabel,
+    Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
 use egui_extras::{Column, TableBody};
-use ehttp::{Request, Response};
 use log::error;
 use pigweb_common::Pig;
-use poll_promise::Promise;
-use std::future::Future;
-use std::iter::FusedIterator;
-use url::form_urlencoded::byte_serialize;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 
@@ -23,6 +16,13 @@ enum Page {
     Logs,
     Users,
     System,
+}
+
+// ( ͡° ͜ʖ ͡°)
+enum DirtyAction {
+    Create(String),
+    Select(Pig),
+    None,
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -58,7 +58,7 @@ pub struct PigWebClient {
     dirty_modal: bool,
 
     #[serde(skip)]
-    dirty_modal_action: Option<dyn FnOnce()>,
+    dirty_modal_action: DirtyAction,
 
     // Whether to show the modal error messages are displayed on
     #[serde(skip)]
@@ -80,7 +80,7 @@ impl Default for PigWebClient {
             dirty: false,
             delete_modal: false,
             dirty_modal: false,
-            dirty_modal_action: None,
+            dirty_modal_action: DirtyAction::None,
             error_modal: false,
             error_modal_msg: None,
         }
@@ -103,34 +103,40 @@ impl PigWebClient {
     }
 
     fn process_promises(&mut self) {
-        self.data.resolve_pig_create(
-            |pig| {
+        match self.data.resolve_pig_create() {
+            Status::Received(pig) => {
                 self.dirty = false;
                 self.selection = Some(pig);
                 self.do_query(); // Redo the search query so it includes the new pig
-            },
-            |err| self.warn_generic_error(err.to_owned()),
-        );
+            }
+            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Pending => {}
+        }
 
-        self.data.resolve_pig_update(
-            |res| {
+        match self.data.resolve_pig_update() {
+            Status::Received(_) => {
                 self.dirty = false;
                 self.do_query(); // Redo the search query so it includes any possible changes
-            },
-            |err| self.warn_generic_error(err.to_owned()),
-        );
+            }
+            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Pending => {}
+        }
 
-        self.data
-            .resolve_pig_fetch(|pigs| self.query_results = Some(pigs), |err| self.warn_generic_error(err.to_owned()));
-
-        self.data.resolve_pig_delete(
-            |res| {
+        match self.data.resolve_pig_delete() {
+            Status::Received(_) => {
                 self.dirty = false;
                 self.selection = None;
                 self.do_query(); // Redo the search query to exclude the deleted pig
-            },
-            |err| self.warn_generic_error(err.to_owned()),
-        )
+            }
+            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Pending => {}
+        }
+
+        match self.data.resolve_pig_fetch() {
+            Status::Received(pigs) => self.query_results = Some(pigs),
+            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Pending => {}
+        }
     }
 
     fn populate_menu(&mut self, ctx: &Context, ui: &mut Ui) {
@@ -188,14 +194,14 @@ impl PigWebClient {
             // Pig create button, it's only enabled when you have something in the search bar
             ui.add_enabled_ui(self.query.is_empty(), |ui| {
                 if ui.button("+ Add").clicked() {
-                    self.warn_if_dirty(|| self.data.request_pig_create(&self.query));
+                    self.warn_if_dirty(DirtyAction::Create(self.query.to_owned()));
                 }
             });
         });
 
         ui.add_space(4.0);
 
-        match *self.query_results {
+        match &self.query_results {
             Some(pigs) => {
                 if !pigs.is_empty() {
                     // Only render the results table if we have results to show
@@ -218,10 +224,10 @@ impl PigWebClient {
 
                                     // On click, check if we have to change the selection before processing it
                                     if row.response().clicked()
-                                        && !self.selection.as_mut().is_some_and(|sel| sel.id == &pig.id)
+                                        && !self.selection.as_mut().is_some_and(|sel| sel.id == pig.id)
                                     {
                                         // warn about unsaved changes, else JUST DO IT
-                                        self.warn_if_dirty(|| self.selection = Some(pig.clone()));
+                                        self.warn_if_dirty(DirtyAction::Select(pig.clone()));
                                     }
                                 });
                             }
@@ -243,7 +249,7 @@ impl PigWebClient {
 
         if self.selection.is_some() {
             // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
-            let mut pig = self.selection.as_mut().unwrap();
+            let pig = self.selection.as_mut().unwrap();
 
             // Title
             ui.add_space(8.0);
@@ -326,16 +332,10 @@ impl PigWebClient {
             self.dirty_modal,
             "Discard Unsaved Changes",
             "Are you sure you want to continue and discard your current changes? There's no going back after this!",
-            Some(|| {
-                // Run the action if we have one set
-                match self.dirty_modal_action.as_mut() {
-                    Some(action) => action(),
-                    None => {}
-                }
-            }),
+            Some(|| self.do_dirty_action()),
             || {
                 self.dirty_modal = false;
-                self.dirty_modal_action = None;
+                self.dirty_modal_action = DirtyAction::None;
             },
         );
 
@@ -354,19 +354,20 @@ impl PigWebClient {
 
     /// If the dirty var is true, warn the user with a modal before performing
     /// the given action; otherwise, just do it
-    fn warn_if_dirty(&mut self, action: impl FnOnce()) {
+    fn warn_if_dirty(&mut self, action: DirtyAction) {
+        self.dirty_modal_action = action;
+
         if self.dirty {
             self.dirty_modal = true;
-            self.dirty_modal_action = Some(action);
         } else {
-            action();
+            self.do_dirty_action();
         }
     }
 
     /// Sets the error modal's message, marks the modal to be shown, and logs
     /// the error
     fn warn_generic_error(&mut self, msg: String) {
-        error!(msg);
+        error!("{}", msg);
         self.error_modal = true;
         self.error_modal_msg = Some(msg);
     }
@@ -376,6 +377,14 @@ impl PigWebClient {
     fn do_query(&mut self) {
         self.query_results = None;
         self.data.request_pig_fetch(&self.query);
+    }
+
+    fn do_dirty_action(&mut self) {
+        match &self.dirty_modal_action {
+            DirtyAction::Create(name) => self.data.request_pig_create(name),
+            DirtyAction::Select(pig) => self.selection = Some(pig.to_owned()),
+            DirtyAction::None => {}
+        }
     }
 }
 
@@ -426,7 +435,7 @@ fn add_basic_modal(
     heading: &str,
     body: &str,
     confirm_action: Option<impl FnOnce()>,
-    reset_action: impl FnOnce(),
+    reset_action: impl Fn(),
 ) -> Option<ModalResponse<()>> {
     if show {
         let modal = Modal::new(Id::new(heading)).show(ctx, |ui| {
@@ -472,7 +481,7 @@ fn add_basic_modal(
 
 // This is out here because putting it in the struct causes a self-reference error
 // it doesn't even need to use PigWebClient it's a fucking util method
-fn add_pig_properties_row(body: &mut TableBody, height: f32, label: &str, add_value: impl FnOnce(&mut Ui)) {
+fn add_pig_properties_row(body: &mut TableBody<'_>, height: f32, label: &str, add_value: impl FnOnce(&mut Ui)) {
     body.row(height, |mut row| {
         row.col(|ui| {
             ui.label(label);

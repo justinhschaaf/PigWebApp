@@ -1,26 +1,47 @@
+use crate::data::Status::{Errored, Pending, Received};
 use ehttp::{Request, Response};
 use form_urlencoded::byte_serialize;
 use pigweb_common::Pig;
-use poll_promise::Promise;
+use tokio::sync::oneshot;
+use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;
 
 pub struct ClientDataHandler {
-    // PIG API - expected responses
-    pig_create_response: PromisedResponse,
-    pig_update_response: PromisedResponse,
-    pig_delete_response: PromisedResponse,
-    pig_fetch_response: PromisedResponse,
+    // PIG API
+    pig_create_receiver: MaybeWaiting<Pig>,
+    pig_update_receiver: MaybeWaiting<Response>,
+    pig_delete_receiver: MaybeWaiting<Response>,
+    pig_fetch_receiver: MaybeWaiting<Vec<Pig>>,
 }
 
-type PromisedResponse = Option<Promise<Result<Response, String>>>;
+/// Utility type to represent a result we may be waiting on. Named because we
+/// may or may not have a receiver waiting on the result.
+///
+/// These are Options so that when the value in the receiver/result is read, we
+/// can revert back to None. This means we're not beating a dead horse every
+/// frame and wasting cycles reassigning data in app.rs that hasn't changed AND
+/// we get to free up the memory.
+type MaybeWaiting<T> = Option<Receiver<Result<T, String>>>;
+
+/// Represents the status of a request
+pub enum Status<T> {
+    /// The request is done, here's the value
+    Received(T),
+
+    /// There was a problem taking care of this
+    Errored(String),
+
+    /// We haven't received a response from the Sender for whatever reason
+    Pending,
+}
 
 impl Default for ClientDataHandler {
     fn default() -> Self {
         Self {
-            pig_create_response: None,
-            pig_update_response: None,
-            pig_delete_response: None,
-            pig_fetch_response: None,
+            pig_create_receiver: None,
+            pig_update_receiver: None,
+            pig_delete_receiver: None,
+            pig_fetch_receiver: None,
         }
     }
 }
@@ -28,142 +49,158 @@ impl Default for ClientDataHandler {
 impl ClientDataHandler {
     // PIG API
     pub fn request_pig_create(&mut self, name: &str) {
-        self.pig_create_response = Some(Promise::spawn_local({
-            // Encode special characters https://rustjobs.dev/blog/how-to-url-encode-strings-in-rust/
-            let encoded_name = byte_serialize(name.as_bytes()).collect();
+        // Encode special characters https://rustjobs.dev/blog/how-to-url-encode-strings-in-rust/
+        let encoded_name: String = byte_serialize(name.as_bytes()).collect();
+        let (tx, rx) = oneshot::channel();
+        self.pig_create_receiver = Some(rx);
 
-            // Return the result from making the request
-            let req = Request::post(format!("/api/pigs/create?name={}", encoded_name), vec![]);
-            ehttp::fetch_async(req)
-        }));
+        // Submit the request to the server
+        let req = Request::post(format!("/api/pigs/create?name={}", encoded_name), vec![]);
+        fetch_and_send(req, tx, |res| {
+            // Convert the response to a pig object
+            let json = res.json::<Pig>();
+
+            // Check if the JSON parsed successfully, both times we don't
+            // care whether the message is received by rx
+            match json {
+                Ok(pig) => Ok(pig),
+                Err(err) => Err(format!("Unable to parse JSON: {}", err.to_string())),
+            }
+        });
     }
 
-    pub fn resolve_pig_create(&mut self, ok: impl FnOnce(Pig), err: impl FnOnce(&String)) {
-        handle_promised_response(
-            self.pig_create_response.as_mut(),
-            |res| {
-                self.pig_create_response = None;
-                let json = res.json::<Pig>();
-                match json {
-                    Ok(pig) => ok(pig),
-                    Err(e) => err(&e.to_string()),
-                }
-            },
-            |msg| err(msg),
-        );
+    pub fn resolve_pig_create(&mut self) -> Status<Pig> {
+        let status = check_response_status(&mut self.pig_create_receiver);
+
+        if matches!(&status, Received(_)) {
+            self.pig_create_receiver = None;
+        }
+
+        status
     }
 
     pub fn discard_pig_create(&mut self) {
-        self.pig_create_response = None;
+        self.pig_create_receiver = None;
     }
 
     pub fn request_pig_update(&mut self, pig: &Pig) {
-        self.pig_update_response = Some(Promise::spawn_local({
-            // Create a request object, we need a match incase JSON fails
-            match Request::json("/api/pigs/update", pig) {
-                // Send the request if we can
-                Ok(req) => ehttp::fetch_async(Request {
-                    // Convert the request type from POST to PUT
-                    method: "PUT".to_owned(),
-                    ..req
-                }),
-                Err(e) => Err(e.to_string()),
-            }
-        }));
+        let (tx, rx) = oneshot::channel();
+        self.pig_update_receiver = Some(rx);
+
+        // If the JSON POST was generated successfully
+        let req = Request::json("/api/pigs/update", pig);
+        if let Ok(req) = req {
+            // Convert the request type from POST to PUT
+            let req = Request { method: "PUT".to_owned(), ..req };
+
+            // Now actually submit the request, then relay the result to the channel sender
+            // No fancy processing needed for this one
+            fetch_and_send(req, tx, |res| Ok(res));
+        } else {
+            tx.send(Err(format!("Unable to generate JSON: {}", req.unwrap_err().to_string()))).unwrap_or_default()
+        }
     }
 
-    pub fn resolve_pig_update(&mut self, ok: impl FnOnce(&Response), err: impl FnOnce(&String)) {
-        handle_promised_response(
-            self.pig_update_response.as_mut(),
-            |res| {
-                self.pig_update_response = None;
-                ok(res);
-            },
-            |msg| err(msg),
-        );
+    pub fn resolve_pig_update(&mut self) -> Status<Response> {
+        let status = check_response_status(&mut self.pig_update_receiver);
+
+        if matches!(&status, Received(_)) {
+            self.pig_update_receiver = None;
+        }
+
+        status
     }
 
     pub fn discard_pig_update(&mut self) {
-        self.pig_update_response = None;
+        self.pig_update_receiver = None;
     }
 
     pub fn request_pig_delete(&mut self, id: Uuid) {
-        self.pig_delete_response = Some(Promise::spawn_local({
-            ehttp::fetch_async(Request {
-                // Convert method type to DELETE, ::get method is just a good starter
-                method: "DELETE".to_owned(),
-                ..Request::get(format!("/api/pigs/delete?id={}", id.to_string()))
-            })
-        }));
+        let (tx, rx) = oneshot::channel();
+        self.pig_delete_receiver = Some(rx);
+
+        // Convert method type to DELETE, ::get method is just a good starter
+        let req =
+            Request { method: "DELETE".to_owned(), ..Request::get(format!("/api/pigs/delete?id={}", id.to_string())) };
+
+        // Submit the request, no fancy processing needed for this one
+        fetch_and_send(req, tx, |res| Ok(res));
     }
 
-    pub fn resolve_pig_delete(&mut self, ok: impl FnOnce(&Response), err: impl FnOnce(&String)) {
-        handle_promised_response(
-            self.pig_delete_response.as_mut(),
-            |res| {
-                self.pig_delete_response = None;
-                ok(res);
-            },
-            |msg| err(msg),
-        );
+    pub fn resolve_pig_delete(&mut self) -> Status<Response> {
+        let status = check_response_status(&mut self.pig_delete_receiver);
+
+        if matches!(&status, Received(_)) {
+            self.pig_delete_receiver = None;
+        }
+
+        status
     }
 
     pub fn discard_pig_delete(&mut self) {
-        self.pig_delete_response = None;
+        self.pig_delete_receiver = None;
     }
 
     pub fn request_pig_fetch(&mut self, query: &str) {
-        self.pig_fetch_response = Some(Promise::spawn_local({
-            // Encode special characters https://rustjobs.dev/blog/how-to-url-encode-strings-in-rust/
-            let encoded_name = byte_serialize(query.as_bytes()).collect();
+        // Encode special characters https://rustjobs.dev/blog/how-to-url-encode-strings-in-rust/
+        let encoded_name: String = byte_serialize(query.as_bytes()).collect();
+        let (tx, rx) = oneshot::channel();
+        self.pig_fetch_receiver = Some(rx);
 
-            // Return the result from making the request
-            // TODO replace string URLs with ones from the url crate, we have it might as well use it
-            let req = Request::post(format!("/api/pigs/fetch?name={}", encoded_name), vec![]);
-            ehttp::fetch_async(req)
-        }));
+        // Submit the request to the server, TODO better query params
+        let req = Request::post(format!("/api/pigs/fetch?name={}", encoded_name), vec![]);
+        fetch_and_send(req, tx, |res| {
+            // Convert the response to a pig object
+            let json = res.json::<Vec<Pig>>();
+
+            // Check if the JSON parsed successfully, both times we don't
+            // care whether the message is received by rx
+            match json {
+                Ok(pigs) => Ok(pigs),
+                Err(err) => Err(format!("Unable to parse JSON: {}", err.to_string())),
+            }
+        });
     }
 
-    pub fn resolve_pig_fetch(&mut self, ok: impl FnOnce(Vec<Pig>), err: impl FnOnce(&String)) {
-        handle_promised_response(
-            self.pig_fetch_response.as_mut(),
-            |res| {
-                self.pig_fetch_response = None;
-                let json = res.json::<Vec<Pig>>();
-                match json {
-                    Ok(pigs) => ok(pigs),
-                    Err(e) => err(&e.to_string()),
-                }
-            },
-            |msg| err(msg),
-        );
+    pub fn resolve_pig_fetch(&mut self) -> Status<Vec<Pig>> {
+        let status = check_response_status(&mut self.pig_fetch_receiver);
+
+        if matches!(&status, Received(_)) {
+            self.pig_fetch_receiver = None;
+        }
+
+        status
     }
 
     pub fn discard_pig_fetch(&mut self) {
-        self.pig_fetch_response = None;
+        self.pig_fetch_receiver = None;
     }
 }
 
-/// Utility method to avoid ugly nested code. Checks if the given option has a
-/// promise, and if so, checks whether the promise is ready. If that also passes
-/// it runs the provided callbacks based on the result
-fn handle_promised_response(
-    optional_promise: Option<&mut Promise<Result<Response, String>>>,
-    ok: impl FnOnce(&Response),
-    err: impl FnOnce(&String),
+fn fetch_and_send<T: 'static + Send>(
+    req: Request,
+    tx: Sender<Result<T, String>>,
+    on_response: impl 'static + Send + FnOnce(Response) -> Result<T, String>,
 ) {
-    if optional_promise.is_some() {
-        if let Some(result) = optional_promise.unwrap().ready() {
-            match result {
-                Ok(res) => {
-                    if res.ok {
-                        ok(res);
-                    } else {
-                        err(&res.status_text)
-                    }
-                }
-                Err(msg) => err(msg),
-            }
-        }
+    // No fancy processing needed for this one
+    ehttp::fetch(req, |result| {
+        tx.send(match result {
+            Ok(res) => on_response(res),
+            Err(msg) => Err(format!("No response: {}", msg.to_owned())),
+        })
+        .unwrap_or_default()
+    });
+}
+
+fn check_response_status<T>(maybe: &mut MaybeWaiting<T>) -> Status<T> {
+    match maybe {
+        Some(receiver) => match receiver.try_recv() {
+            Ok(res) => match res {
+                Ok(t) => Received(t),
+                Err(msg) => Errored(msg),
+            },
+            Err(_) => Pending,
+        },
+        None => Pending,
     }
 }

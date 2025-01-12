@@ -16,11 +16,8 @@ eframe = { version = "0.30.0", default-features = false, features = [
 ] }
 ehttp = { version = "0.5.0", features = ["json"] }
 log.workspace = true
-poll-promise = { version = "0.3.0", features = ["web"] }
+tokio = { version = "1.43.0", features = ["sync"] }
 form_urlencoded = "1.2.1"
-
-# depended upon by form_urlencoded, we need to manually enable js again
-getrandom = { version = "*", features = ["js"] }
 
 # You only need serde if you want app persistence:
 serde.workspace = true
