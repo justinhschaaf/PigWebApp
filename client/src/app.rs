@@ -1,8 +1,9 @@
 use crate::app::Page::Pigs;
 use crate::data::{ClientDataHandler, Status};
+use crate::modal::Modal;
 use egui::{
-    menu, widgets, Align, CentralPanel, Context, Id, Label, Layout, Modal, ModalResponse, ScrollArea, SelectableLabel,
-    Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, widgets, Align, CentralPanel, Context, Label, Layout, ScrollArea, SelectableLabel, Sense, SidePanel,
+    TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
 use egui_extras::{Column, TableBody};
 use log::error;
@@ -310,46 +311,62 @@ impl PigWebClient {
     }
 
     fn show_modals(&mut self, ctx: &Context) {
-        add_basic_modal(
-            ctx,
-            self.delete_modal,
-            "Confirm Deletion",
-            "Are you sure you want to delete this pig? There's no going back after this!",
-            Some(|| match self.selection.as_mut() {
-                Some(pig) => self.data.request_pig_delete(pig.id),
-                None => self.warn_generic_error(
-                    "You tried to delete a pig without having one selected, how the fuck did you manage that?"
-                        .to_owned(),
-                ),
-            }),
-            || {
+        if self.delete_modal {
+            let modal = Modal::new_with_extras(
+                ctx,
+                "delete",
+                "Confirm Deletion",
+                "Are you sure you want to delete this pig? There's no going back after this!",
+                |ui| {
+                    if ui.button("✔ Yes").clicked() {
+                        match self.selection.as_ref() {
+                            Some(pig) => self.data.request_pig_delete(pig.id),
+                            None => self.warn_generic_error(
+                                "You tried to delete a pig without having one selected, how the fuck did you manage that?"
+                                    .to_owned(),
+                            ),
+                        }
+                        self.delete_modal = false;
+                    }
+                },
+            );
+
+            if modal.should_close() {
                 self.delete_modal = false;
-            },
-        );
+            }
+        }
 
-        add_basic_modal(
-            ctx,
-            self.dirty_modal,
-            "Discard Unsaved Changes",
-            "Are you sure you want to continue and discard your current changes? There's no going back after this!",
-            Some(|| self.do_dirty_action()),
-            || {
+        if self.dirty_modal {
+            let modal = Modal::new_with_extras(
+                ctx,
+                "dirty",
+                "Discard Unsaved Changes",
+                "Are you sure you want to continue and discard your current changes? There's no going back after this!",
+                |ui| {
+                    if ui.button("✔ Yes").clicked() {
+                        self.do_dirty_action();
+                        self.dirty_modal = false;
+                    }
+                },
+            );
+
+            if modal.should_close() {
                 self.dirty_modal = false;
-                self.dirty_modal_action = DirtyAction::None;
-            },
-        );
+            }
+        }
 
-        add_basic_modal(
-            ctx,
-            self.error_modal,
-            "Error",
-            self.error_modal_msg.as_mut().unwrap_or(&mut "How did we get here?".to_owned()),
-            None,
-            || {
+        if self.error_modal {
+            if Modal::new(
+                ctx,
+                "Error",
+                "Error",
+                self.error_modal_msg.as_ref().unwrap_or(&mut "How did we get here?".to_owned()),
+            )
+            .should_close()
+            {
                 self.error_modal = false;
-                self.error_modal_msg = None;
-            },
-        );
+            }
+        }
     }
 
     /// If the dirty var is true, warn the user with a modal before performing
@@ -423,59 +440,6 @@ impl eframe::App for PigWebClient {
 
     fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
         visuals.extreme_bg_color.to_normalized_gamma_f32()
-    }
-}
-
-/// Creates a simple modal with a heading, body, confirm button, and cancel
-/// button--assuming `show` is true. The reset_action is run pretty much
-/// whenever the modal should close so you only have to write that code once
-fn add_basic_modal(
-    ctx: &Context,
-    show: bool,
-    heading: &str,
-    body: &str,
-    confirm_action: Option<impl FnOnce()>,
-    reset_action: impl Fn(),
-) -> Option<ModalResponse<()>> {
-    if show {
-        let modal = Modal::new(Id::new(heading)).show(ctx, |ui| {
-            ui.set_width(320.0);
-
-            ui.vertical_centered(|ui| {
-                ui.heading(heading);
-                ui.add_space(8.0);
-                ui.label(body);
-            });
-
-            ui.separator();
-
-            // Right align these buttons, order is also inverted
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // Only show this button if we have a callback
-                match confirm_action {
-                    Some(action) => {
-                        if ui.button("✔ Yes").clicked() {
-                            action();
-                            reset_action();
-                        }
-                    }
-                    None => {}
-                }
-
-                // We should always be able to exit
-                if ui.button("🗙 Cancel").clicked() {
-                    reset_action();
-                }
-            });
-        });
-
-        if modal.should_close() {
-            reset_action();
-        }
-
-        Some(modal)
-    } else {
-        None
     }
 }
 

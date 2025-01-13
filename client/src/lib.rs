@@ -2,5 +2,6 @@
 
 mod app;
 mod data;
+mod modal;
 
 pub use app::PigWebClient;
