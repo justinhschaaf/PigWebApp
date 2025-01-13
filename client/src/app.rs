@@ -202,46 +202,51 @@ impl PigWebClient {
 
         ui.add_space(4.0);
 
-        match &self.query_results {
-            Some(pigs) => {
-                if !pigs.is_empty() {
-                    // Only render the results table if we have results to show
-                    egui_extras::TableBuilder::new(ui)
-                        .striped(true)
-                        .resizable(false)
-                        .column(Column::remainder())
-                        .sense(Sense::click())
-                        .cell_layout(Layout::left_to_right(Align::Center))
-                        .body(|mut body| {
-                            for pig in pigs {
-                                body.row(18.0, |mut row| {
-                                    // idfk why this wants us to clone selection, otherwise self is supposedly moved
-                                    row.set_selected(self.selection.as_mut().is_some_and(|select| select.id == pig.id));
+        // Only render the results table if we have results to show
+        if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
+            // let Some(pigs) = self.query_results.as_mut()
+            egui_extras::TableBuilder::new(ui)
+                .striped(true)
+                .resizable(false)
+                .column(Column::remainder())
+                .sense(Sense::click())
+                .cell_layout(Layout::left_to_right(Align::Center))
+                .body(|mut body| {
+                    let pigs = self.query_results.as_ref().unwrap();
+                    // This means we don't have to clone the list every frame
+                    let mut clicked: Option<Pig> = None;
+                    pigs.iter().for_each(|pig| {
+                        body.row(18.0, |mut row| {
+                            // idfk why this wants us to clone selection, otherwise self is supposedly moved
+                            row.set_selected(self.selection.as_ref().is_some_and(|select| select.id == pig.id));
 
-                                    // Make sure we can't select the text or else we can't click the row behind
-                                    row.col(|ui| {
-                                        Label::new(&pig.name).selectable(false).ui(ui);
-                                    });
+                            // Make sure we can't select the text or else we can't click the row behind
+                            row.col(|ui| {
+                                Label::new(&pig.name).selectable(false).truncate().ui(ui);
+                            });
 
-                                    // On click, check if we have to change the selection before processing it
-                                    if row.response().clicked()
-                                        && !self.selection.as_mut().is_some_and(|sel| sel.id == pig.id)
-                                    {
-                                        // warn about unsaved changes, else JUST DO IT
-                                        self.warn_if_dirty(DirtyAction::Select(pig.clone()));
-                                    }
-                                });
+                            // On click, check if we have to change the selection before processing it
+                            if row.response().clicked() && !self.selection.as_ref().is_some_and(|sel| sel.id == pig.id)
+                            {
+                                // warn about unsaved changes, else JUST DO IT
+                                // ...and we clone the clone because of fucking course we do D:<
+                                clicked = Some(pig.clone());
                             }
                         });
-                }
-            }
-            // Still waiting on results
-            // This should only happen when waiting for results, since otherwise it'll be an empty vec
-            None => {
-                // You spin me right 'round, baby, 'right round
-                // Like a record, baby, right 'round, 'round, 'round
-                ui.vertical_centered(|ui| ui.spinner());
-            }
+                    });
+
+                    // Check if we have an action to do
+                    if clicked.is_some() {
+                        self.warn_if_dirty(DirtyAction::Select(clicked.unwrap()));
+                    }
+                });
+        } else if self.query_results.is_none() {
+            // Still waiting on results, this should only happen when waiting
+            // since otherwise it'll be an empty vec
+
+            // You spin me right 'round, baby, 'right round
+            // Like a record, baby, right 'round, 'round, 'round
+            ui.vertical_centered(|ui| ui.spinner());
         }
     }
 
