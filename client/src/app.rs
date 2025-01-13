@@ -26,6 +26,7 @@ enum DirtyAction {
     None,
 }
 
+// TODO figure out whether we really need to save any state or if it's better to just reset
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct PigWebClient {
@@ -176,6 +177,7 @@ impl PigWebClient {
     }
 
     fn populate_sidebar(&mut self, ui: &mut Ui) {
+        ui.set_width(320.0);
         ui.add_space(8.0);
         ui.heading("The Pig List");
         ui.add_space(8.0);
@@ -193,7 +195,7 @@ impl PigWebClient {
             }
 
             // Pig create button, it's only enabled when you have something in the search bar
-            ui.add_enabled_ui(self.query.is_empty(), |ui| {
+            ui.add_enabled_ui(!self.query.is_empty(), |ui| {
                 if ui.button("+ Add").clicked() {
                     self.warn_if_dirty(DirtyAction::Create(self.query.to_owned()));
                 }
@@ -253,10 +255,8 @@ impl PigWebClient {
     fn populate_center(&mut self, ui: &mut Ui) {
         ui.set_max_width(540.0);
 
-        if self.selection.is_some() {
-            // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
-            let pig = self.selection.as_mut().unwrap();
-
+        // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
+        if let Some(pig) = self.selection.as_mut() {
             // Title
             ui.add_space(8.0);
             ui.heading(pig.name.to_owned()); // convert to owned since we transfer a mut reference later
