@@ -140,7 +140,7 @@ impl PigWebClient {
         }
     }
 
-    fn populate_menu(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn populate_menu(&mut self, ui: &mut Ui) {
         ui.add_space(2.0);
 
         widgets::global_theme_preference_switch(ui);
@@ -165,7 +165,7 @@ impl PigWebClient {
             // Show the quit button if somehow this gets run on desktop
             // (you shouldn't, dumbass)
             if !is_web && ui.button("🗙").clicked() {
-                ctx.send_viewport_cmd(ViewportCommand::Close);
+                ui.ctx().send_viewport_cmd(ViewportCommand::Close);
             }
 
             // Logout
@@ -175,7 +175,7 @@ impl PigWebClient {
         });
     }
 
-    fn populate_sidebar(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn populate_sidebar(&mut self, ui: &mut Ui) {
         ui.add_space(8.0);
         ui.heading("The Pig List");
         ui.add_space(8.0);
@@ -250,7 +250,7 @@ impl PigWebClient {
         }
     }
 
-    fn populate_center(&mut self, ctx: &Context, ui: &mut Ui) {
+    fn populate_center(&mut self, ui: &mut Ui) {
         ui.set_max_width(540.0);
 
         if self.selection.is_some() {
@@ -421,17 +421,17 @@ impl eframe::App for PigWebClient {
 
         TopBottomPanel::top("top_panel").show(ctx, |ui| {
             menu::bar(ui, |ui| {
-                self.populate_menu(ctx, ui);
+                self.populate_menu(ui);
             });
         });
 
         SidePanel::left("left_panel").show(ctx, |ui| {
-            self.populate_sidebar(ctx, ui);
+            self.populate_sidebar(ui);
         });
 
         CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
-                self.populate_center(ctx, ui);
+                self.populate_center(ui);
             });
         });
 
