@@ -148,7 +148,7 @@ impl ClientDataHandler {
         self.pig_fetch_receiver = Some(rx);
 
         // Submit the request to the server, TODO better query params
-        let req = Request::post(format!("/api/pigs/fetch?name={}", encoded_name), vec![]);
+        let req = Request::get(format!("/api/pigs/fetch?name={}", encoded_name));
         fetch_and_send(req, tx, |res| {
             // Convert the response to a pig object
             let json = res.json::<Vec<Pig>>();
