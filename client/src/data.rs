@@ -1,6 +1,7 @@
 use crate::data::Status::{Errored, Pending, Received};
 use ehttp::{Request, Response};
 use form_urlencoded::byte_serialize;
+use log::debug;
 use pigweb_common::Pig;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
@@ -72,7 +73,8 @@ impl ClientDataHandler {
     pub fn resolve_pig_create(&mut self) -> Status<Pig> {
         let status = check_response_status(&mut self.pig_create_receiver);
 
-        if matches!(&status, Received(_)) {
+        // Drop the receiver if we have a response
+        if !matches!(&status, Pending) {
             self.pig_create_receiver = None;
         }
 
@@ -104,7 +106,8 @@ impl ClientDataHandler {
     pub fn resolve_pig_update(&mut self) -> Status<Response> {
         let status = check_response_status(&mut self.pig_update_receiver);
 
-        if matches!(&status, Received(_)) {
+        // Drop the receiver if we have a response
+        if !matches!(&status, Pending) {
             self.pig_update_receiver = None;
         }
 
@@ -130,7 +133,8 @@ impl ClientDataHandler {
     pub fn resolve_pig_delete(&mut self) -> Status<Response> {
         let status = check_response_status(&mut self.pig_delete_receiver);
 
-        if matches!(&status, Received(_)) {
+        // Drop the receiver if we have a response
+        if !matches!(&status, Pending) {
             self.pig_delete_receiver = None;
         }
 
@@ -165,7 +169,8 @@ impl ClientDataHandler {
     pub fn resolve_pig_fetch(&mut self) -> Status<Vec<Pig>> {
         let status = check_response_status(&mut self.pig_fetch_receiver);
 
-        if matches!(&status, Received(_)) {
+        // Drop the receiver if we have a response
+        if !matches!(&status, Pending) {
             self.pig_fetch_receiver = None;
         }
 
@@ -182,10 +187,15 @@ fn fetch_and_send<T: 'static + Send>(
     tx: Sender<Result<T, String>>,
     on_response: impl 'static + Send + FnOnce(Response) -> Result<T, String>,
 ) {
+    debug!("Sending request: {req:?}\nBody: {}", String::from_utf8(req.body.clone()).unwrap_or_default());
+
     // No fancy processing needed for this one
     ehttp::fetch(req, |result| {
         tx.send(match result {
-            Ok(res) => on_response(res),
+            Ok(res) => {
+                debug!("Received response: {res:?}\nBody: {}", res.text().unwrap_or_default());
+                on_response(res)
+            }
             Err(msg) => Err(format!("No response: {}", msg.to_owned())),
         })
         .unwrap_or_default()
