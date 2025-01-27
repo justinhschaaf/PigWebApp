@@ -1,8 +1,10 @@
 #[macro_use]
 extern crate rocket;
+mod config;
 mod pigapi;
 
 use crate::pigapi::{get_pig_api_routes, TempPigs};
+use pigweb_common::PIG_API_ROOT;
 use rocket::fs::NamedFile;
 use rocket::response::status::NotFound;
 use std::path::PathBuf;
@@ -38,5 +40,5 @@ fn rocket() -> _ {
     rocket::build()
         .manage(Mutex::new(TempPigs::default()))
         .mount("/", routes![index, static_files, api])
-        .mount("/api/pigs/", get_pig_api_routes())
+        .mount(PIG_API_ROOT, get_pig_api_routes())
 }

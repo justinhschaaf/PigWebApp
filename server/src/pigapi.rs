@@ -1,4 +1,4 @@
-use pigweb_common::Pig;
+use pigweb_common::{Pig, PIG_API_ROOT};
 use rocket::form::validate::Contains;
 use rocket::http::Status;
 use rocket::response::status::Created;
@@ -6,7 +6,6 @@ use rocket::serde::json::Json;
 use rocket::{Route, State};
 use std::str::FromStr;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 pub struct TempPigs {
@@ -153,7 +152,7 @@ impl Default for TempPigs {
 }
 
 #[derive(Debug, PartialEq, FromForm)]
-struct PigQuery {
+struct PigFetchQuery {
     // TODO add limit on number of results here? maybe upper and lower bound? idfk
     // Option is necessary to make it so both args aren't absolutely required
     id: Option<Vec<String>>,
@@ -174,12 +173,7 @@ async fn api_pig_create(
     // TODO deduplicate uuids?
 
     // Create the new pig
-    let pig = Pig {
-        id: Uuid::new_v4(),
-        name: name.to_owned(),
-        // https://www.cloudhadoop.com/rust-current-timestamp-millisecs-example#rust-current-time-in-milliseconds
-        created: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
-    };
+    let pig = Pig::create(name);
 
     // We have to clone the pig for the json response because Json() wants ownership of it
     let res = Json(pig.clone());
@@ -190,21 +184,21 @@ async fn api_pig_create(
 
     // Respond with a path to the pig and the object itself, unfortunately the location path is mandatory
     // TODO does this HAVE to be a full URL, or is this fine?
-    Ok(Created::new(format!("/api/pigs/fetch?id={}", res.id.to_string())).body(res))
+    Ok(Created::new(format!("{}fetch?id={}", PIG_API_ROOT, res.id.to_string())).body(res))
 }
 
 #[put("/update", data = "<pig>")]
 async fn api_pig_update(temp_pigs_mut: &State<Mutex<TempPigs>>, pig: Json<Pig>) -> (Status, &'static str) {
-    // TODO add more checks to make sure read-only data isn't modified, we're testing rn so it's fine but later it won't be
-
     let uuid = pig.id;
 
     let mut temp_pigs = temp_pigs_mut.lock().unwrap();
 
     for (i, e) in temp_pigs.pigs.iter().enumerate() {
         if e.id == uuid {
-            temp_pigs.pigs.remove(i);
-            temp_pigs.pigs.insert(i, pig.into_inner());
+            // use merge to protect read-only data
+            // TODO should it return the correct pig object in case the data has changed? Yes, yes it should.
+            let merged = temp_pigs.pigs.remove(i).merge(&pig.into_inner());
+            temp_pigs.pigs.insert(i, merged);
 
             // there should only be one pig with this uuid, we need not continue
             return (Status::Ok, "Pig successfully updated");
@@ -237,7 +231,7 @@ async fn api_pig_delete(temp_pigs_mut: &State<Mutex<TempPigs>>, id: &str) -> (St
 #[get("/fetch?<query..>")]
 async fn api_pig_fetch(
     temp_pigs_mut: &State<Mutex<TempPigs>>,
-    query: PigQuery,
+    query: PigFetchQuery,
 ) -> Result<Json<Vec<Pig>>, (Status, &'static str)> {
     let mut ids: Option<Vec<Uuid>> = None;
     let mut res = Vec::new();
