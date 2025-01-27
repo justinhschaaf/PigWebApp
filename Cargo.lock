@@ -2332,6 +2332,7 @@ name = "pigweb_server"
 version = "0.1.0"
 dependencies = [
  "diesel",
+ "figment",
  "log",
  "pigweb_common",
  "rocket",

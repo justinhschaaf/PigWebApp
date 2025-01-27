@@ -1,6 +1,9 @@
 # Mac stuff:
 .DS_Store
 
+# testing runtime dir
+run
+
 # trunk output folder
 dist
 

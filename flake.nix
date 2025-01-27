@@ -40,8 +40,13 @@
                     fontconfig
                 ];
 
+                # Library path environment variables
                 LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
                 RUST_SRC_PATH = "${rustPlatform.rustLibSrc}"; # https://wiki.nixos.org/wiki/Rust#Shell.nix_example
+
+                # Env vars for test runs
+                PIGWEB_CONFIG = "/run/PigWeb.toml";
+                ROCKET_CONFIG = "/run/Rocket.toml";
 
             };
         });
