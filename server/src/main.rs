@@ -3,42 +3,23 @@ extern crate rocket;
 mod config;
 mod pigapi;
 
+use crate::config::Config;
 use crate::pigapi::{get_pig_api_routes, TempPigs};
 use pigweb_common::PIG_API_ROOT;
-use rocket::fs::NamedFile;
-use rocket::response::status::NotFound;
-use std::path::PathBuf;
+use rocket::fs::FileServer;
 use std::sync::Mutex;
-
-// Create a route for any url relative to /
-// https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md
-#[get("/<path..>")]
-async fn static_files(path: PathBuf) -> Result<NamedFile, NotFound<String>> {
-    let path = PathBuf::from("dist").join(path);
-    match NamedFile::open(path).await {
-        Ok(f) => Ok(f),
-        Err(_) => index().await, // If no file is found, route to index
-    }
-}
-
-// Set the index route
-// https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md
-#[get("/")]
-async fn index() -> Result<NamedFile, NotFound<String>> {
-    NamedFile::open("dist/index.html").await.map_err(|e| NotFound(e.to_string()))
-}
-
-#[get("/api")]
-async fn api() -> &'static str {
-    "Hello World"
-}
 
 // Start the web sever using the launch macro
 #[launch]
 fn rocket() -> _ {
-    // TODO implement better logging with log
+    // Load the config here and convert the client file path to_owned so we can
+    // move it to the mutex later.
+    let config = Config::load();
+    let client_path = config.client_path.to_owned();
+
     rocket::build()
+        .manage(Mutex::new(config))
         .manage(Mutex::new(TempPigs::default()))
-        .mount("/", routes![index, static_files, api])
+        .mount("/", FileServer::from(client_path))
         .mount(PIG_API_ROOT, get_pig_api_routes())
 }

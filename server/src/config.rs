@@ -4,11 +4,13 @@ use figment::{Error, Figment, Metadata, Profile, Provider};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Config {}
+pub struct Config {
+    pub client_path: String,
+}
 
 impl Default for Config {
     fn default() -> Self {
-        Config {}
+        Config { client_path: "dist".to_owned() }
     }
 }
 
