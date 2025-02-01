@@ -17,6 +17,7 @@ target_wasm
 
 # nix stuff
 .direnv
+result
 
 # intellij
 .idea/

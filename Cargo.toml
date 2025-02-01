@@ -15,7 +15,7 @@ readme = "README.md"
 [workspace.dependencies]
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
-uuid = { version = "1.11.0", features = ["serde"] }
+uuid = { version = "1.11.0", features = ["v4", "js", "serde"] }
 
 # profiles need to be defined at a higher level than individual workspace members
 # this was previously in the client member

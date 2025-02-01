@@ -13,14 +13,14 @@ server-side, as Pocketbase doesn't support serverside functions.
 
 ### Milestone 1
 
-- [ ] **Client and Server modules written in Rust.** Shared code and data structures should be in a Common module.
+- [x] **Client and Server modules written in Rust.** Shared code and data structures should be in a Common module.
 - [ ] **[CRUD](https://en.wikipedia.org/wiki/Create%2C_read%2C_update_and_delete) pig names.**
 - [ ] **[RBAC](https://en.wikipedia.org/wiki/Role-based_access_control) to allow different levels of access.** You
   should also be able to configure groups for assigning these roles to users.
 - [ ] **[OIDC](https://en.wikipedia.org/wiki/OpenID#OpenID_Connect_(OIDC)) authentication, the app should not manage
   authentication.** It should, however, be able to read user groups from OIDC user info and manage users' groups through
   it.
-- [ ] **Fully declarative configuration.** Ideally, this is possible through NixOS modules that you can also use to
+- [x] **Fully declarative configuration.** Ideally, this is possible through NixOS modules that you can also use to
   deploy it. The config file itself can be TOML as I don't care about reading it, just processing. It should also be
   able to take config from environment variables (takes precedent over config) and possibly CLI options (takes precedent
   over env).
@@ -97,7 +97,7 @@ Since the web server blocks the thread and as such cargo-make [can't stop the se
 
 Builds are configured using [cargo-make](https://github.com/sagiegurari/cargo-make) to avoid ugly wrapper scripts.
 
-For a production build, run `cargo make -p production`. Nix build instructions coming eventually.
+For a production build, run `cargo make -p production`. You can build the client and server separately with Nix using `nix build ./#pigweb_[client/server]`.
 
 ## Resources
 

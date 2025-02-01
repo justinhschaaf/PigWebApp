@@ -1,21 +1,99 @@
 {
-    description = "eframe devShell";
+    description = "PigWebApp";
 
     inputs = {
         nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+        crane.url = "github:ipetkov/crane";
         rust-overlay.url = "github:oxalica/rust-overlay";
         flake-utils.url = "github:numtide/flake-utils";
     };
 
-    outputs = { self, nixpkgs, rust-overlay, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+    outputs = { nixpkgs, flake-utils, ... }@inputs: {
+        # we don't need to replicate this per system
+        nixosModules.default = { ... }: {
+            imports = [ ./module.nix ];
+        };
+    } // flake-utils.lib.eachDefaultSystem (system:
         let
-            overlays = [ (import rust-overlay) ];
+            # Setup pkgs and Rust overlay
+            overlays = [ (import inputs.rust-overlay) ];
             pkgs = import nixpkgs { inherit system overlays; };
             rust = pkgs.rust-bin.stable.latest.default.override {
                 extensions = [ "rust-src" ];
                 targets = [ "wasm32-unknown-unknown" "x86_64-unknown-linux-gnu" ];
             };
+
+            # CRANE BUILD SYSTEM
+            # To make the code look like spaghetti, Crane recommends defining
+            # most of the parameters for your packages ahead of time in a let
+            # statement like this. You then have to use those parameters to
+            # precompile the dependencies for each package for caching.
+            #
+            # https://crane.dev/examples/trunk-workspace.html
+            # https://crane.dev/examples/custom-toolchain.html
+            craneLib = (inputs.crane.mkLib pkgs).overrideToolchain rust;
+
+            # Base options used by both client and server packages
+            basePkgArgs = {
+                # Pull the version from the parent Cargo.toml
+                # https://m7.rs/blog/2022-11-01-package-a-rust-app-with-nix/index.html
+                version = (pkgs.lib.importTOML ./Cargo.toml).workspace.package.version;
+
+                # "My source is I made it the fuck up!"
+                #
+                # Using the nixpkgs clean function instead of Crane's fixes
+                # "ERROR error getting the canonical path to the build target HTML file"
+                src = pkgs.lib.cleanSource ./.;
+
+                # This is set for some reason idfk what it does
+                strictDeps = true;
+
+                # By default, checks are enabled for Cargo builds. Disable them.
+                doCheck = false;
+
+                # Mostly needed for Trunk, compile in release mode
+                CARGO_PROFILE = "release";
+            };
+
+            # Various client-specific options
+            clientPkgArgs = basePkgArgs // {
+                pname = (pkgs.lib.importTOML ./client/Cargo.toml).package.name;
+
+                # Needed to tell Cargo to build dependencies for WASM
+                CARGO_BUILD_TARGET = "wasm32-unknown-unknown";
+                cargoExtraArgs = "--package=pigweb_client";
+
+                # Needed by egui, probably
+                buildInputs = with pkgs; [
+                    openssl
+                    libxkbcommon
+                    libGL
+                    fontconfig
+                ];
+
+                # "this version must match EXACTLY the one defined in Cargo.lock"
+                # why tf do i have to *manually* define this?
+                wasm-bindgen-cli = pkgs.wasm-bindgen-cli.override {
+                    version = "0.2.93";
+                    # To find the hashes on a new version, set both to
+                    # pkgs.lib.fakeHash and run a build. The first hash you get
+                    # will be the hash. Run it again to get the cargoHash
+                    hash = "sha256-DDdu5mM3gneraM85pAepBXWn3TMofarVR4NbjMdz3r0=";
+                    cargoHash = "sha256-birrg+XABBHHKJxfTKAMSlmTVYLmnmqMDfRnmG6g/YQ=";
+                };
+            };
+
+            # Build the client dependencies to cache them ahead of time
+            clientDeps = craneLib.buildDepsOnly clientPkgArgs;
+
+            # Server-specific options
+            serverPkgArgs = basePkgArgs // {
+                pname = (pkgs.lib.importTOML ./server/Cargo.toml).package.name;
+                cargoExtraArgs = "--package=pigweb_server";
+            };
+
+            # Build the server dependencies to cache them ahead of time
+            serverDeps = craneLib.buildDepsOnly serverPkgArgs;
         in with pkgs; {
             devShells.default = mkShell rec {
                 buildInputs = [
@@ -56,5 +134,26 @@
                 PIGWEB_CONFIG = "./PigWeb.toml";
                 ROCKET_CONFIG = "./Rocket.toml";
             };
+
+            # The settings here are only really important for Trunk, Cargo ones set above
+            packages.pigweb_client = craneLib.buildTrunkPackage (clientPkgArgs // {
+                cargoArtifacts = clientDeps;
+
+                # Trunk expects the current directory to be the crate to compile
+                # Fixes "ERROR could not find the root package of the target crate"
+                preBuild = ''
+                    cd ./client
+                '';
+
+                # After building, move the `dist` artifacts and restore the working directory
+                postBuild = ''
+                    mv ./dist ..
+                    cd ..
+                '';
+            });
+
+            packages.pigweb_server = craneLib.buildPackage (serverPkgArgs // {
+                cargoArtifacts = serverDeps;
+            });
         });
 }
