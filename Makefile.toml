@@ -5,14 +5,6 @@ default_to_workspace = false
 # Don't load the builtin tasks because they're fucking broken
 skip_core_tasks = true
 
-[env]
-# Let workspace members inherit these options
-# https://github.com/sagiegurari/cargo-make?tab=readme-ov-file#automatically-extend-workspace-makefile
-CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
-
-# Don't bother trying to compile the common member on its own
-CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = ["common"]
-
 [env.development]
 TARGET_SUBDIR = "debug"
 

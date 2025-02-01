@@ -44,10 +44,17 @@
                 LD_LIBRARY_PATH = "${lib.makeLibraryPath buildInputs}";
                 RUST_SRC_PATH = "${rustPlatform.rustLibSrc}"; # https://wiki.nixos.org/wiki/Rust#Shell.nix_example
 
-                # Env vars for test runs
-                PIGWEB_CONFIG = "/run/PigWeb.toml";
-                ROCKET_CONFIG = "/run/Rocket.toml";
+                # Cargo Make: let workspace members inherit parent makefile
+                # https://github.com/sagiegurari/cargo-make?tab=readme-ov-file#automatically-extend-workspace-makefile
+                CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true;
 
+                # Cargo Make: don't bother trying to compile the common member on its own
+                CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "common";
+
+                # Env vars for test runs, paths should be relative to /run
+                PIGWEB_CLIENT_PATH = "../client/dist";
+                PIGWEB_CONFIG = "./PigWeb.toml";
+                ROCKET_CONFIG = "./Rocket.toml";
             };
         });
 }
