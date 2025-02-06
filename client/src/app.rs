@@ -492,6 +492,8 @@ impl PigWebClient {
             DirtyAction::Select(pig) => self.selection = Some(pig.to_owned()),
             DirtyAction::None => {}
         }
+        // Reset dirty state, how tf did i forget this?
+        self.dirty = false;
     }
 }
 
