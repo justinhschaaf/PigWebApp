@@ -31,6 +31,9 @@ const THEME: [ThemeColor; 12] = [
     THEME_PRIMARY,
 ];
 
+const FONT_MAIN: &[u8] = include_bytes!("../data/ReadexPro-Regular.ttf");
+const FONT_MONO: &[u8] = include_bytes!("../data/IBMPlexMono-Medium.ttf");
+
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 enum Page {
     Pigs,
@@ -128,6 +131,25 @@ impl PigWebClient {
         // to know in advance if dark mode is enabled. It's easier to just let
         // the widget and egui itself worry about that.
         let colorix = Colorix::global(&cc.egui_ctx, THEME);
+
+        // Add fonts https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/examples/custom_font/src/main.rs
+        cc.egui_ctx.add_font(FontInsert::new(
+            "readex-pro",
+            FontData::from_static(FONT_MAIN),
+            vec![InsertFontFamily {
+                family: egui::FontFamily::Proportional,
+                priority: egui::epaint::text::FontPriority::Highest,
+            }],
+        ));
+
+        cc.egui_ctx.add_font(FontInsert::new(
+            "ibm-plex-mono",
+            FontData::from_static(FONT_MONO),
+            vec![InsertFontFamily {
+                family: egui::FontFamily::Monospace,
+                priority: egui::epaint::text::FontPriority::Highest,
+            }],
+        ));
 
         // Prepare default data to return
         let mut res: Self = Default::default();
