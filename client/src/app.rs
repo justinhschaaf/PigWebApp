@@ -3,9 +3,10 @@ use crate::data::{ClientDataHandler, Status};
 use crate::modal::Modal;
 use chrono::{DateTime, Local, TimeZone, Utc};
 use egui::epaint::text::{FontInsert, InsertFontFamily};
+use egui::text::LayoutJob;
 use egui::{
-    menu, widgets, Align, CentralPanel, Context, FontData, Label, Layout, ScrollArea, SelectableLabel, Sense,
-    SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, widgets, Align, CentralPanel, Context, FontData, FontSelection, Label, Layout, ScrollArea, SelectableLabel,
+    Sense, SidePanel, TextEdit, TopBottomPanel, Ui, Vec2, ViewportCommand, Widget,
 };
 use egui_colors::tokens::ThemeColor;
 use egui_colors::Colorix;
@@ -357,8 +358,27 @@ impl PigWebClient {
                         // ScrollArea lets you scroll when it's too big
                         ui.centered_and_justified(|ui| {
                             ScrollArea::vertical().show(ui, |ui| {
-                                if ui.text_edit_multiline(&mut pig.name).changed() {
-                                    self.dirty = true; // TODO strip newlines, or just make it a singleline with wrap
+                                // Adapted from https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/crates/egui/src/widgets/text_edit/builder.rs#L521-L529
+                                // We need to write a custom layouter for this so we can visually
+                                // wrap the text while still treating it as a single line
+                                let mut wrapped_singleline_layouter = |ui: &Ui, text: &str, wrap_width: f32| {
+                                    let job = LayoutJob::simple(
+                                        text.to_owned(),
+                                        FontSelection::default().resolve(ui.style()),
+                                        ui.visuals()
+                                            .override_text_color
+                                            .unwrap_or_else(|| ui.visuals().widgets.inactive.text_color()),
+                                        wrap_width,
+                                    );
+                                    ui.fonts(|f| f.layout_job(job))
+                                };
+
+                                let te = TextEdit::singleline(&mut pig.name)
+                                    .desired_rows(4)
+                                    .layouter(&mut wrapped_singleline_layouter);
+
+                                if te.show(ui).response.changed() {
+                                    self.dirty = true;
                                 }
                             });
                         });
