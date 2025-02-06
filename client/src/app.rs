@@ -484,13 +484,13 @@ impl eframe::App for PigWebClient {
         // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
 
-        TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        TopBottomPanel::top("top_panel").resizable(false).show(ctx, |ui| {
             menu::bar(ui, |ui| {
                 self.populate_menu(ui);
             });
         });
 
-        SidePanel::left("left_panel").show(ctx, |ui| {
+        SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
             self.populate_sidebar(ui);
         });
 
