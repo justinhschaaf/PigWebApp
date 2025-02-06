@@ -1,5 +1,5 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 pub const PIG_API_ROOT: &str = "/api/pigs/";
@@ -9,19 +9,14 @@ pub struct Pig {
     pub id: Uuid,
     // never, never, never, never, never, never, NEVER change this to a str or else it will FUCK EVERYTHING
     pub name: String,
-    pub created: u64,
+    pub created: i64,
 }
 
 impl Pig {
     /// Creates a new pig with a random UUID and the given name at the current
     /// timestamp.
     pub fn create(name: &str) -> Pig {
-        Pig {
-            id: Uuid::new_v4(),
-            name: name.to_owned(),
-            // https://www.cloudhadoop.com/rust-current-timestamp-millisecs-example#rust-current-time-in-milliseconds
-            created: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
-        }
+        Pig { id: Uuid::new_v4(), name: name.to_owned(), created: Utc::now().timestamp_millis() }
     }
 
     /// Merges this pig and the given one together, using the current pig as a

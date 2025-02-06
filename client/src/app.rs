@@ -1,6 +1,7 @@
 use crate::app::Page::Pigs;
 use crate::data::{ClientDataHandler, Status};
 use crate::modal::Modal;
+use chrono::{DateTime, Local, TimeZone, Utc};
 use egui::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{
     menu, widgets, Align, CentralPanel, Context, FontData, Label, Layout, ScrollArea, SelectableLabel, Sense,
@@ -371,7 +372,9 @@ impl PigWebClient {
                     }
 
                     add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
-                        ui.label(pig.created.to_string()); // TODO chrono https://docs.rs/chrono/latest/chrono/
+                        let create_time =
+                            DateTime::from_timestamp_millis(pig.created).unwrap_or_default().with_timezone(&Local);
+                        ui.label(create_time.format("%a, %b %e %Y %T").to_string());
                     });
                 });
         }
