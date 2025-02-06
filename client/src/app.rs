@@ -1,15 +1,35 @@
 use crate::app::Page::Pigs;
 use crate::data::{ClientDataHandler, Status};
 use crate::modal::Modal;
+use egui::epaint::text::{FontInsert, InsertFontFamily};
 use egui::{
-    menu, widgets, Align, CentralPanel, Context, Label, Layout, ScrollArea, SelectableLabel, Sense, SidePanel,
-    TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, widgets, Align, CentralPanel, Context, FontData, Label, Layout, ScrollArea, SelectableLabel, Sense,
+    SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
+use egui_colors::tokens::ThemeColor;
+use egui_colors::Colorix;
 use egui_extras::{Column, TableBody};
 use log::error;
 use pigweb_common::Pig;
+use std::ops::Add;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
+const THEME_PRIMARY: ThemeColor = ThemeColor::Gray;
+const THEME_ACCENT: ThemeColor = ThemeColor::Custom([255, 137, 172]);
+const THEME: [ThemeColor; 12] = [
+    THEME_PRIMARY,
+    THEME_PRIMARY,
+    THEME_ACCENT,
+    THEME_ACCENT,
+    THEME_ACCENT,
+    THEME_PRIMARY,
+    THEME_PRIMARY,
+    THEME_ACCENT,
+    THEME_ACCENT,
+    THEME_ACCENT,
+    THEME_PRIMARY,
+    THEME_PRIMARY,
+];
 
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 enum Page {
@@ -32,6 +52,10 @@ enum DirtyAction {
 pub struct PigWebClient {
     // The currently open page, see above for options
     page: Page,
+
+    // Theming
+    #[serde(skip)]
+    colorix: Colorix,
 
     // Handles sending and receiving API data
     #[serde(skip)]
@@ -75,6 +99,7 @@ impl Default for PigWebClient {
     fn default() -> Self {
         Self {
             page: Pigs,
+            colorix: Colorix::default(), // Properly initialized in new()
             data: ClientDataHandler::default(),
             query: String::default(),
             query_results: Some(Vec::new()),
@@ -95,13 +120,26 @@ impl PigWebClient {
         // This is also where you can customize the look and feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
 
+        // Set zoom to 110% so everything is slightly easier to see
+        cc.egui_ctx.set_zoom_factor(1.1);
+
+        // Initialize Colorix with the global ctx and our theme. We could use
+        // Colorix::local_from_style without the context, but we would also have
+        // to know in advance if dark mode is enabled. It's easier to just let
+        // the widget and egui itself worry about that.
+        let colorix = Colorix::global(&cc.egui_ctx, THEME);
+
+        // Prepare default data to return
+        let mut res: Self = Default::default();
+
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            return eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
+            res = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
         }
 
-        Default::default()
+        // Respond with the theme + the default or loaded data
+        Self { colorix, ..res }
     }
 
     fn process_promises(&mut self) {
@@ -144,7 +182,8 @@ impl PigWebClient {
     fn populate_menu(&mut self, ui: &mut Ui) {
         ui.add_space(2.0);
 
-        widgets::global_theme_preference_switch(ui);
+        // Use the Colorix theme picker instead of egui's
+        self.colorix.light_dark_toggle_button(ui, 14.0);
 
         ui.separator();
 
@@ -254,6 +293,7 @@ impl PigWebClient {
 
     fn populate_center(&mut self, ui: &mut Ui) {
         ui.set_max_width(540.0);
+        self.colorix.draw_background(ui.ctx(), false);
 
         // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
         if let Some(pig) = self.selection.as_mut() {
@@ -441,10 +481,6 @@ impl eframe::App for PigWebClient {
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
-    }
-
-    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
-        visuals.extreme_bg_color.to_normalized_gamma_f32()
     }
 }
 
