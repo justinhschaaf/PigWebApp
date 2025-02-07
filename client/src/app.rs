@@ -1,19 +1,18 @@
 use crate::app::Page::Pigs;
 use crate::data::{ClientDataHandler, Status};
 use crate::modal::Modal;
-use chrono::{DateTime, Local, TimeZone, Utc};
+use chrono::{DateTime, Local};
 use egui::epaint::text::{FontInsert, InsertFontFamily};
 use egui::text::LayoutJob;
 use egui::{
-    menu, widgets, Align, CentralPanel, Context, FontData, FontSelection, Label, Layout, ScrollArea, SelectableLabel,
-    Sense, SidePanel, TextEdit, TopBottomPanel, Ui, Vec2, ViewportCommand, Widget,
+    menu, Align, CentralPanel, Context, FontData, FontSelection, Label, Layout, ScrollArea, SelectableLabel, Sense,
+    SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
 use egui_colors::tokens::ThemeColor;
 use egui_colors::Colorix;
 use egui_extras::{Column, TableBody};
 use log::error;
 use pigweb_common::Pig;
-use std::ops::Add;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 const THEME_PRIMARY: ThemeColor = ThemeColor::Gray;
@@ -338,6 +337,26 @@ impl PigWebClient {
                     self.delete_modal = true;
                 }
             });
+            // Waiting on lucasmerlin/hello_egui#53 or #54 before we can use this
+            // https://github.com/lucasmerlin/hello_egui/pull/54
+            /*Flex::horizontal().show(ui, |flex| {
+                let save_button = Button::new("💾 Save");
+                let delete_button = Button::new("🗑 Delete");
+
+                flex.add_ui(item().grow(1.0), |ui| {
+                    if !self.dirty {
+                        ui.disable();
+                    }
+
+                    if save_button.ui(ui).clicked() {
+                        self.data.request_pig_update(pig);
+                    }
+                });
+
+                if flex.add_widget(item().grow(1.0), delete_button).response.clicked() {
+                    self.delete_modal = true;
+                }
+            });*/
 
             ui.add_space(4.0);
 
