@@ -7,5 +7,11 @@ readme.workspace = true
 
 [dependencies]
 chrono.workspace = true
+form_urlencoded.workspace = true
 serde.workspace = true
+serde_url_params.workspace = true
 uuid.workspace = true
+rocket = { workspace = true, optional = true }
+
+[features]
+server = ["dep:rocket"]

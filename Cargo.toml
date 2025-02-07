@@ -14,8 +14,11 @@ readme = "README.md"
 # shared dependencies
 [workspace.dependencies]
 chrono = { version = "0.4.39", features = ["serde"] }
+form_urlencoded = "1.2.1"
 log = "0.4"
+rocket = { version = "0.5.1", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
+serde_url_params = "0.2.1"
 uuid = { version = "1.11.0", features = ["v4", "js", "serde"] }
 
 # profiles need to be defined at a higher level than individual workspace members

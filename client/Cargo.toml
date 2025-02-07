@@ -22,7 +22,6 @@ ehttp = { version = "0.5.0", features = ["json"] }
 chrono.workspace = true
 log.workspace = true
 tokio = { version = "1.43.0", features = ["sync"] }
-form_urlencoded = "1.2.1"
 
 # You only need serde if you want app persistence:
 serde.workspace = true

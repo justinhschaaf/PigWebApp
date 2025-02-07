@@ -2478,7 +2478,6 @@ dependencies = [
  "egui_extras",
  "egui_flex",
  "ehttp",
- "form_urlencoded",
  "log",
  "pigweb_common",
  "serde",
@@ -2493,7 +2492,10 @@ name = "pigweb_common"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "form_urlencoded",
+ "rocket",
  "serde",
+ "serde_url_params",
  "uuid",
 ]
 
@@ -3030,6 +3032,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87607cb1398ed59d48732e575a4c28a7a8ebf2454b964fe3f224f2afc07909e1"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "serde_url_params"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c43307d0640738af32fe8d01e47119bc0fc8a686be470a44a586caff76dfb34"
+dependencies = [
+ "serde",
+ "url",
 ]
 
 [[package]]

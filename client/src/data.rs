@@ -1,8 +1,7 @@
 use crate::data::Status::{Errored, Pending, Received};
 use ehttp::{Request, Response};
-use form_urlencoded::byte_serialize;
 use log::debug;
-use pigweb_common::Pig;
+use pigweb_common::{query, yuri, Pig, PigFetchQuery, PIG_API_ROOT};
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;
@@ -51,12 +50,11 @@ impl ClientDataHandler {
     // PIG API
     pub fn request_pig_create(&mut self, name: &str) {
         // Encode special characters https://rustjobs.dev/blog/how-to-url-encode-strings-in-rust/
-        let encoded_name: String = byte_serialize(name.as_bytes()).collect();
         let (tx, rx) = oneshot::channel();
         self.pig_create_receiver = Some(rx);
 
         // Submit the request to the server
-        let req = Request::post(format!("/api/pigs/create?name={}", encoded_name), vec![]);
+        let req = Request::post(yuri!(PIG_API_ROOT, "create" ;? query!("name" = name)), vec![]);
         fetch_and_send(req, tx, |res| {
             // Convert the response to a pig object
             let json = res.json::<Pig>();
@@ -90,7 +88,7 @@ impl ClientDataHandler {
         self.pig_update_receiver = Some(rx);
 
         // If the JSON POST was generated successfully
-        let req = Request::json("/api/pigs/update", pig);
+        let req = Request::json(yuri!(PIG_API_ROOT, "update"), pig);
         if let Ok(req) = req {
             // Convert the request type from POST to PUT
             let req = Request { method: "PUT".to_owned(), ..req };
@@ -123,8 +121,10 @@ impl ClientDataHandler {
         self.pig_delete_receiver = Some(rx);
 
         // Convert method type to DELETE, ::get method is just a good starter
-        let req =
-            Request { method: "DELETE".to_owned(), ..Request::get(format!("/api/pigs/delete?id={}", id.to_string())) };
+        let req = Request {
+            method: "DELETE".to_owned(),
+            ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = id.to_string())))
+        };
 
         // Submit the request, no fancy processing needed for this one
         fetch_and_send(req, tx, |res| Ok(res));
@@ -146,13 +146,12 @@ impl ClientDataHandler {
     }
 
     pub fn request_pig_fetch(&mut self, query: &str) {
-        // Encode special characters https://rustjobs.dev/blog/how-to-url-encode-strings-in-rust/
-        let encoded_name: String = byte_serialize(query.as_bytes()).collect();
         let (tx, rx) = oneshot::channel();
         self.pig_fetch_receiver = Some(rx);
 
-        // Submit the request to the server, TODO better query params
-        let req = Request::get(format!("/api/pigs/fetch?name={}", encoded_name));
+        // Submit the request to the server
+        let params = PigFetchQuery { id: None, name: Some(query.to_owned()) };
+        let req = Request::get(yuri!(PIG_API_ROOT, "fetch" ;? query!(params)));
         fetch_and_send(req, tx, |res| {
             // Convert the response to a pig object
             let json = res.json::<Vec<Pig>>();

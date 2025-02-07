@@ -1,10 +1,17 @@
+mod yuri;
+
+// Reexports so dependents can access them
+pub use form_urlencoded;
+pub use serde_url_params;
+
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// The relative base URL for all Pig API routes
 pub const PIG_API_ROOT: &str = "/api/pigs/";
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pig {
     pub id: Uuid,
     // never, never, never, never, never, never, NEVER change this to a str or else it will FUCK EVERYTHING
@@ -30,5 +37,23 @@ impl Pig {
     /// https://doc.rust-lang.org/std/cell/struct.Cell.html#examples
     pub fn merge(&self, other: &Pig) -> Pig {
         Pig { name: other.name.to_owned(), ..*self }
+    }
+}
+
+/// Represents all possible options in a query to fetch pigs. Every possible
+/// parameter is an [Option] so all of them aren't absolutely required.
+// https://stackoverflow.com/a/42551386
+#[derive(Debug, PartialEq, Serialize)]
+#[cfg_attr(feature = "server", derive(rocket::FromForm))]
+pub struct PigFetchQuery {
+    // TODO add limit on number of results here? maybe upper and lower bound? idfk
+    // TODO add better functions for declaration, e.g. with_id(), with_ids(), with_name()
+    pub id: Option<Vec<String>>,
+    pub name: Option<String>,
+}
+
+impl Default for PigFetchQuery {
+    fn default() -> Self {
+        Self { id: None, name: None }
     }
 }

@@ -6,11 +6,11 @@ authors.workspace = true
 readme.workspace = true
 
 [dependencies]
-pigweb_common = { path = "../common" }
+pigweb_common = { path = "../common", features = ["server"] }
 log.workspace = true
+rocket.workspace = true
 serde.workspace = true
 uuid.workspace = true
 diesel = "2.2.5"
 figment = "*"
-rocket = { version = "0.5.1", features = ["json"] }
 tantivy = "0.22.0"

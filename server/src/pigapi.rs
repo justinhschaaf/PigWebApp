@@ -1,4 +1,4 @@
-use pigweb_common::{Pig, PIG_API_ROOT};
+use pigweb_common::{query, yuri, Pig, PigFetchQuery, PIG_API_ROOT};
 use rocket::form::validate::Contains;
 use rocket::http::Status;
 use rocket::response::status::Created;
@@ -151,14 +151,6 @@ impl Default for TempPigs {
     }
 }
 
-#[derive(Debug, PartialEq, FromForm)]
-struct PigFetchQuery {
-    // TODO add limit on number of results here? maybe upper and lower bound? idfk
-    // Option is necessary to make it so both args aren't absolutely required
-    id: Option<Vec<String>>,
-    name: Option<String>,
-}
-
 pub fn get_pig_api_routes() -> Vec<Route> {
     routes![api_pig_create, api_pig_update, api_pig_delete, api_pig_fetch]
 }
@@ -183,8 +175,9 @@ async fn api_pig_create(
     temp_pigs.pigs.push(pig);
 
     // Respond with a path to the pig and the object itself, unfortunately the location path is mandatory
-    // TODO does this HAVE to be a full URL, or is this fine?
-    Ok(Created::new(format!("{}fetch?id={}", PIG_API_ROOT, res.id.to_string())).body(res))
+    let params = PigFetchQuery { id: Some(Vec::from([res.id.to_string()])), name: None };
+    let loc = yuri!(PIG_API_ROOT, "fetch" ;? query!(params));
+    Ok(Created::new(loc).body(res))
 }
 
 #[put("/update", data = "<pig>")]
