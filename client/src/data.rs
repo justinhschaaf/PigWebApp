@@ -123,7 +123,7 @@ impl ClientDataHandler {
         // Convert method type to DELETE, ::get method is just a good starter
         let req = Request {
             method: "DELETE".to_owned(),
-            ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = id.to_string())))
+            ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = id.to_string().as_str())))
         };
 
         // Submit the request, no fancy processing needed for this one

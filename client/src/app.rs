@@ -5,12 +5,13 @@ use chrono::{DateTime, Local};
 use egui::epaint::text::{FontInsert, InsertFontFamily};
 use egui::text::LayoutJob;
 use egui::{
-    menu, Align, CentralPanel, Context, FontData, FontSelection, Label, Layout, ScrollArea, SelectableLabel, Sense,
-    SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, Align, Button, CentralPanel, Context, FontData, FontSelection, Label, Layout, ScrollArea, SelectableLabel,
+    Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
 use egui_colors::tokens::ThemeColor;
 use egui_colors::Colorix;
 use egui_extras::{Column, TableBody};
+use egui_flex::{item, Flex, FlexJustify};
 use log::error;
 use pigweb_common::Pig;
 
@@ -326,37 +327,19 @@ impl PigWebClient {
             ui.add_space(8.0);
 
             // Pig action buttons
-            ui.vertical_centered_justified(|ui| {
-                ui.add_enabled_ui(self.dirty, |ui| {
-                    if ui.button("💾 Save").clicked() {
-                        self.data.request_pig_update(pig);
-                    }
-                });
-
-                if ui.button("🗑 Delete").clicked() {
-                    self.delete_modal = true;
-                }
-            });
-            // Waiting on lucasmerlin/hello_egui#53 or #54 before we can use this
-            // https://github.com/lucasmerlin/hello_egui/pull/54
-            /*Flex::horizontal().show(ui, |flex| {
+            Flex::horizontal().w_full().justify(FlexJustify::SpaceBetween).show(ui, |flex| {
                 let save_button = Button::new("💾 Save");
                 let delete_button = Button::new("🗑 Delete");
 
-                flex.add_ui(item().grow(1.0), |ui| {
-                    if !self.dirty {
-                        ui.disable();
-                    }
+                // TODO set as disabled again when not dirty. we just have to live with this until https://github.com/lucasmerlin/hello_egui/pull/50 is done
+                if flex.add(item().grow(1.0), save_button).clicked() {
+                    self.data.request_pig_update(pig);
+                }
 
-                    if save_button.ui(ui).clicked() {
-                        self.data.request_pig_update(pig);
-                    }
-                });
-
-                if flex.add_widget(item().grow(1.0), delete_button).response.clicked() {
+                if flex.add(item().grow(1.0), delete_button).clicked() {
                     self.delete_modal = true;
                 }
-            });*/
+            });
 
             ui.add_space(4.0);
 
