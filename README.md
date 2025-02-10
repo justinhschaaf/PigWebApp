@@ -87,6 +87,8 @@ Run `cargo make serve` to open a development server on [localhost:8000](http://l
 
 Since the web server blocks the thread and as such cargo-make [can't stop the server when it's time to build new changes](https://github.com/tmux/tmux/wiki), the server itself is run in a [tmux](https://github.com/tmux/tmux/wiki) session. To view it's output, run `tmux attach-session -t pigweb` in a separate shell to attach to the session.
 
+When you're done, stop the server with `cargo make stop`.
+
 ### Building
 
 Builds are configured using [cargo-make](https://github.com/sagiegurari/cargo-make) to avoid ugly wrapper scripts.

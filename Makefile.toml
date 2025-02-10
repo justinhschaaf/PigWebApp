@@ -31,6 +31,13 @@ dependencies = [
     "serve-run"
 ]
 
+[tasks.stop]
+description = "Kills the currently running live web server."
+dependencies = [
+    "serve-kill",
+    "db-kill"
+]
+
 [tasks.format]
 command = "cargo"
 args = ["fmt", "--", "--emit=files"]
