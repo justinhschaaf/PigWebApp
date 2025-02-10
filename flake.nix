@@ -105,6 +105,9 @@
                     rustfmt # code formatting
                     trunk # WASM compilation for the client module
 
+                    # database, we need it installed here for the dev server
+                    postgresql
+
                     # misc. tools
                     tmux
 
@@ -128,10 +131,17 @@
                 # Cargo Make: don't bother trying to compile the common member on its own
                 CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "common";
 
-                # Env vars for test runs, paths should be relative to /run
+                # Env vars for test runs, paths should be relative to ./run
                 PIGWEB_CLIENT_PATH = "../client/dist";
                 PIGWEB_CONFIG = "./PigWeb.toml";
                 ROCKET_CONFIG = "./Rocket.toml";
+
+                # Postgres vars, commands are run by cargo-make
+                # https://zeroes.dev/p/nix-recipe-for-postgresql/
+                # https://mgdm.net/weblog/postgresql-in-a-nix-shell/
+                PGHOST = "/tmp"; # where the unix socket is located
+                PGDATA = "./db"; # data dir, relative to ./run
+                PGUSER = "pigweb"; # db user to run commands through
             };
 
             # The settings here are only really important for Trunk, Cargo ones set above

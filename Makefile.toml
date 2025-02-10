@@ -28,7 +28,7 @@ watch = true
 dependencies = [
     "build-members",
     "move-client-dist",
-    "run-server"
+    "serve-run"
 ]
 
 [tasks.format]
@@ -91,20 +91,56 @@ args = ["-r", "client/dist", "target/${TARGET_SUBDIR}/"]
 dependencies = ["remove-target-client-dist"]
 
 [tasks.mk-run-dir]
+description = "Makes sure the run directory exists for the development server."
 private = true
 ignore_errors = true
 command = "mkdir"
 args = ["-p", "run"]
 
-[tasks.kill-old-server]
+[tasks.db-init]
+description = "Initializes the PostgreSQL development server."
 private = true
-ignore_errors = true # this will err if there isn't already a session with the name, which is fine
-command = "tmux"
-args = ["kill-session", "-t", "pigweb"]
+ignore_errors = true # errors if the db server already exists, we can ignore that
+cwd = "run"
+command = "initdb"
+args = ["-U", "${PGUSER}"]
 
-[tasks.run-server]
+[tasks.db-run]
+description = "Starts the development PostgreSQL server."
+private = true
+ignore_errors = true # errors if the server is already running, we can ignore that
+cwd = "run"
+command = "pg_ctl"
+args = ["-o", "\"--unix_socket_directories=\\\"${PGHOST}\\\"\"", "start"]
+dependencies = ["db-init"]
+
+[tasks.db-create]
+description = "Creates the database for the current user on the PostgreSQL development server."
+private = true
+ignore_errors = true # errors if the db already exists, we can ignore that
+cwd = "run"
+command = "createdb"
+dependencies = ["db-run"]
+
+[tasks.db-kill]
+description = "Stops the currently running PostgreSQL server."
+private = true
+ignore_errors = true # errors if the db isn't running, we can ignore that
+cwd = "run"
+command = "pg_ctl"
+args = ["stop"]
+
+[tasks.serve-run]
+description = "Starts the development server in a tmux background session."
 private = true
 cwd = "run"
 command = "tmux"
 args = ["new-session", "-d", "-s", "pigweb", "../target/${TARGET_SUBDIR}/pigweb_server"]
-dependencies = ["mk-run-dir", "kill-old-server"]
+dependencies = ["mk-run-dir", "db-create", "serve-kill"]
+
+[tasks.serve-kill]
+description = "Stops the currently running development server."
+private = true
+ignore_errors = true # this will err if there isn't already a session with the name, which is fine
+command = "tmux"
+args = ["kill-session", "-t", "pigweb"]
