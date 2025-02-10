@@ -46,6 +46,8 @@ impl Default for ClientDataHandler {
     }
 }
 
+// TODO we could probably have a struct to actually implement each request type, a lot of the code is duplicated
+// TODO use std::error::Error instead of strings for responses
 impl ClientDataHandler {
     // PIG API
     pub fn request_pig_create(&mut self, name: &str) {

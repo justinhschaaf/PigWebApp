@@ -11,6 +11,5 @@ log.workspace = true
 rocket.workspace = true
 serde.workspace = true
 uuid.workspace = true
-diesel = "2.2.5"
+diesel = "2.2.7"
 figment = "*"
-tantivy = "0.22.0"

@@ -48,13 +48,7 @@ server-side, as Pocketbase doesn't support serverside functions.
 ### Server Architecture
 
 - **[Rocket](https://rocket.rs/) for handling HTTP requests.**
-- **[Tantivy](https://github.com/quickwit-oss/tantivy) for handling searches.**
-- **[Diesel](https://diesel.rs/) for database, SQLite backend by default.** Perhaps make it possible to configure the
-  backend to any SQL server, no guarantees it'll work.
-    - ***Do I even need a separate database, or can Tantivy handle it all?*** It's probably best to use Tantivy in
-      conjunction with a database and just have Tantivy store the tokens and IDs where it got it from,
-      see [here](https://jakejscott.com/full-text-search-for-dynamodb-using-lambda-efs-tantivy-and-rust) for a proof of
-      concept.
+- **[Diesel](https://diesel.rs/) for database, [just use Postgres](https://mccue.dev/pages/8-16-24-just-use-postgres) for the backend.** Postgres supports full text search, so we don't need any additional dependencies for it. See [1](https://admcpr.com/postgres-full-text-search-is-better-than-part1/) [2](https://www.crunchydata.com/blog/postgres-full-text-search-a-search-engine-in-a-database) [3](https://neon.tech/postgresql/postgresql-indexes/postgresql-full-text-search) for implementation guidance.
 - **[Possible OAuth2 library](https://docs.rs/oauth2/4.0.0-alpha.1/oauth2/index.html).** Here are some examples as to
   how OAuth/OIDC might
   work: [1](https://github.com/csssuf/rocket_oidc) [2](https://docs.rs/rocket_oauth2/latest/rocket_oauth2/) [3](https://www.shuttle.dev/blog/2023/08/30/using-oauth-with-axum)

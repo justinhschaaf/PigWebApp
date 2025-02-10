@@ -83,16 +83,14 @@
                 };
             };
 
-            # Build the client dependencies to cache them ahead of time
-            clientDeps = craneLib.buildDepsOnly clientPkgArgs;
-
             # Server-specific options
             serverPkgArgs = basePkgArgs // {
                 pname = (pkgs.lib.importTOML ./server/Cargo.toml).package.name;
                 cargoExtraArgs = "--package=pigweb_server";
             };
 
-            # Build the server dependencies to cache them ahead of time
+            # Build the dependencies to cache them ahead of time
+            clientDeps = craneLib.buildDepsOnly clientPkgArgs;
             serverDeps = craneLib.buildDepsOnly serverPkgArgs;
         in with pkgs; {
             devShells.default = mkShell rec {
@@ -103,6 +101,7 @@
                     # rust tools
                     cargo-make # build tool
                     cargo-watch # cargo-make's watch feature uses this
+                    diesel-cli # diesel.rs doesn't tell you how to use it without this
                     rustfmt # code formatting
                     trunk # WASM compilation for the client module
 
