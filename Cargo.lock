@@ -578,7 +578,13 @@ version = "2.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04001f23ba8843dc315804fa324000376084dfb1c30794ff68dd279e6e5696d5"
 dependencies = [
+ "bitflags 2.6.0",
+ "byteorder",
+ "chrono",
  "diesel_derives",
+ "itoa",
+ "pq-sys",
+ "uuid",
 ]
 
 [[package]]
@@ -592,6 +598,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "diesel_full_text_search"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e28f8f872592a5283c3876a85c230dab8ddcc093c83660b96830c272257d03c9"
+dependencies = [
+ "diesel",
 ]
 
 [[package]]
@@ -652,9 +667,9 @@ checksum = "f25c0e292a7ca6d6498557ff1df68f32c99850012b6ea401cf8daf771f22ff53"
 
 [[package]]
 name = "dsl_auto_type"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5d9abe6314103864cc2d8901b7ae224e0ab1a103a0a416661b4097b0779b607"
+checksum = "139ae9aca7527f85f26dd76483eb38533fd84bd571065da1739656ef71c5ff5b"
 dependencies = [
  "darling",
  "either",
@@ -2237,9 +2252,11 @@ dependencies = [
  "egui_extras",
  "egui_flex",
  "ehttp",
+ "form_urlencoded",
  "log",
  "pigweb_common",
  "serde",
+ "serde_url_params",
  "tokio",
  "uuid",
  "wasm-bindgen-futures",
@@ -2262,12 +2279,16 @@ dependencies = [
 name = "pigweb_server"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "diesel",
+ "diesel_full_text_search",
  "figment",
+ "form_urlencoded",
  "log",
  "pigweb_common",
  "rocket",
  "serde",
+ "serde_url_params",
  "uuid",
 ]
 
@@ -2347,6 +2368,16 @@ name = "ppv-lite86"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
+
+[[package]]
+name = "pq-sys"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30b51d65ebe1cb1f40641b15abae017fed35ccdda46e3dab1ff8768f625a3222"
+dependencies = [
+ "libc",
+ "vcpkg",
+]
 
 [[package]]
 name = "proc-macro-crate"
@@ -3304,6 +3335,12 @@ name = "valuable"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
+
+[[package]]
+name = "vcpkg"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "version_check"

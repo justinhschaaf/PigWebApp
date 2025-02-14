@@ -18,8 +18,6 @@
 #[macro_export]
 macro_rules! yuri {
     ($($segment:expr),+) => {{
-        // yes, the use statement is necessary or else dependents complain about not having them
-        use pigweb_common::form_urlencoded;
         let mut res = String::new();
 
         $(
@@ -78,7 +76,6 @@ macro_rules! yuri {
 #[macro_export]
 macro_rules! query {
     ($($key:literal = $val:expr),+) => {{
-        use pigweb_common::form_urlencoded;
         let mut res = form_urlencoded::Serializer::new(String::new());
 
         // For each pair, append it to the serializer
@@ -89,7 +86,6 @@ macro_rules! query {
     // The other one needs to match first
     ($serializable:expr) => {{
         // Serialize struct to query url
-        use pigweb_common::serde_url_params;
         serde_url_params::to_string(&$serializable).ok().unwrap_or_default()
     }};
 }

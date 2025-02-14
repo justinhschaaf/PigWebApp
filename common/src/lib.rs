@@ -1,9 +1,5 @@
 mod yuri;
 
-// Reexports so dependents can access them
-pub use form_urlencoded;
-pub use serde_url_params;
-
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
