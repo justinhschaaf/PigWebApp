@@ -1,6 +1,6 @@
 mod yuri;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -12,14 +12,14 @@ pub struct Pig {
     pub id: Uuid,
     // never, never, never, never, never, never, NEVER change this to a str or else it will FUCK EVERYTHING
     pub name: String,
-    pub created: i64,
+    pub created: DateTime<Utc>,
 }
 
 impl Pig {
     /// Creates a new pig with a random UUID and the given name at the current
     /// timestamp.
     pub fn create(name: &str) -> Pig {
-        Pig { id: Uuid::new_v4(), name: name.to_owned(), created: Utc::now().timestamp_millis() }
+        Pig { id: Uuid::new_v4(), name: name.to_owned(), created: Utc::now() }
     }
 
     /// Merges this pig and the given one together, using the current pig as a

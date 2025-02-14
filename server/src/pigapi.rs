@@ -1,4 +1,5 @@
 use pigweb_common::{query, yuri, Pig, PigFetchQuery, PIG_API_ROOT};
+use chrono::{TimeZone, Utc};
 use rocket::form::validate::Contains;
 use rocket::http::Status;
 use rocket::response::status::Created;
@@ -144,7 +145,11 @@ impl Default for TempPigs {
         let mut pigs: Vec<Pig> = Vec::new();
 
         for name in names {
-            pigs.push(Pig { id: Uuid::new_v4(), name: name.to_owned(), created: 1734832007454 });
+            pigs.push(Pig {
+                id: Uuid::new_v4(),
+                name: name.to_owned(),
+                created: Utc.timestamp_millis_opt(1734832007454).unwrap(),
+            });
         }
 
         Self { pigs }

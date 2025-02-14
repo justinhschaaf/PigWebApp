@@ -394,8 +394,7 @@ impl PigWebClient {
                     }
 
                     add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
-                        let create_time =
-                            DateTime::from_timestamp_millis(pig.created).unwrap_or_default().with_timezone(&Local);
+                        let create_time = pig.created.with_timezone(&Local);
                         ui.label(create_time.format("%a, %b %e %Y %T").to_string());
                     });
                 });
