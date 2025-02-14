@@ -142,6 +142,10 @@
                 PGHOST = "/tmp"; # where the unix socket is located
                 PGDATA = "./db"; # data dir, relative to ./run
                 PGUSER = "pigweb"; # db user to run commands through
+                PGDATABASE = "${PGUSER}"; # the name of the postgres database
+
+                # database location for diesel-cli
+                DATABASE_URL = "postgres://${PGUSER}@localhost/${PGDATABASE}";
             };
 
             # The settings here are only really important for Trunk, Cargo ones set above

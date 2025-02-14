@@ -112,9 +112,8 @@ cwd = "run"
 command = "initdb"
 args = ["-U", "${PGUSER}"]
 
-[tasks.db-run]
+[tasks.db]
 description = "Starts the development PostgreSQL server."
-private = true
 ignore_errors = true # errors if the server is already running, we can ignore that
 cwd = "run"
 command = "pg_ctl"
@@ -127,7 +126,7 @@ private = true
 ignore_errors = true # errors if the db already exists, we can ignore that
 cwd = "run"
 command = "createdb"
-dependencies = ["db-run"]
+dependencies = ["db"]
 
 [tasks.db-kill]
 description = "Stops the currently running PostgreSQL server."
