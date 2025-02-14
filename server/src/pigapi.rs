@@ -1,5 +1,5 @@
-use pigweb_common::{query, yuri, Pig, PigFetchQuery, PIG_API_ROOT};
 use chrono::{TimeZone, Utc};
+use pigweb_common::{Pig, PigFetchQuery};
 use rocket::form::validate::Contains;
 use rocket::http::Status;
 use rocket::response::status::Created;
@@ -181,8 +181,7 @@ async fn api_pig_create(
 
     // Respond with a path to the pig and the object itself, unfortunately the location path is mandatory
     let params = PigFetchQuery { id: Some(Vec::from([res.id.to_string()])), name: None };
-    let loc = yuri!(PIG_API_ROOT, "fetch" ;? query!(params));
-    Ok(Created::new(loc).body(res))
+    Ok(Created::new(params.to_yuri()).body(res))
 }
 
 #[put("/update", data = "<pig>")]

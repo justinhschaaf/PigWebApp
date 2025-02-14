@@ -153,7 +153,7 @@ impl ClientDataHandler {
 
         // Submit the request to the server
         let params = PigFetchQuery { id: None, name: Some(query.to_owned()) };
-        let req = Request::get(yuri!(PIG_API_ROOT, "fetch" ;? query!(params)));
+        let req = Request::get(params.to_yuri());
         fetch_and_send(req, tx, |res| {
             // Convert the response to a pig object
             let json = res.json::<Vec<Pig>>();

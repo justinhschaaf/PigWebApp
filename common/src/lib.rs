@@ -53,3 +53,9 @@ impl Default for PigFetchQuery {
         Self { id: None, name: None }
     }
 }
+
+impl PigFetchQuery {
+    pub fn to_yuri(&self) -> String {
+        yuri!(PIG_API_ROOT, "fetch" ;? query!(self))
+    }
+}
