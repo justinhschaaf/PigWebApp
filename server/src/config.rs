@@ -6,11 +6,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub client_path: String,
+    pub database: Database,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { client_path: "dist".to_owned() }
+        Config { client_path: "dist".to_owned(), database: Default::default() }
     }
 }
 
@@ -40,5 +41,61 @@ impl Config {
                 error!("{}", e);
                 Config::default()
             })
+    }
+}
+
+// https://www.postgresql.org/docs/9.4/libpq-connect.html#LIBPQ-CONNSTRING
+#[derive(Debug, Serialize, Deserialize)]
+struct Database {
+    pub uri: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub dbname: Option<String>,
+    pub user: Option<String>,
+    pub password: Option<String>,
+}
+
+impl Default for Database {
+    fn default() -> Self {
+        Database {
+            uri: None,
+            host: Some("localhost".to_owned()),
+            port: Some(5432),
+            dbname: Some("pigweb".to_owned()),
+            user: None,
+            password: None,
+        }
+    }
+}
+
+impl Database {
+    pub fn to_pg_connection_string(&self) -> &str {
+        if let Some(uri) = self.uri.to_owned() {
+            uri.as_str()
+        } else {
+            let mut res = String::new();
+
+            if let Some(host) = self.host.to_owned() {
+                res += format!("host='{:?}' ", host).as_str();
+            }
+
+            if let Some(port) = self.port.to_owned() {
+                res += format!("port='{:?}' ", port).as_str();
+            }
+
+            if let Some(dbname) = self.dbname.to_owned() {
+                res += format!("dbname='{:?}' ", dbname).as_str();
+            }
+
+            if let Some(user) = self.user.to_owned() {
+                res += format!("user='{:?}' ", user).as_str();
+            }
+
+            if let Some(password) = self.password.to_owned() {
+                res += format!("password='{:?}' ", password).as_str();
+            }
+
+            res.as_str()
+        }
     }
 }

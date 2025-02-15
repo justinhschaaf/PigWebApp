@@ -152,7 +152,7 @@ impl ClientDataHandler {
         self.pig_fetch_receiver = Some(rx);
 
         // Submit the request to the server
-        let params = PigFetchQuery { id: None, name: Some(query.to_owned()) };
+        let params = PigFetchQuery { name: Some(query.to_owned()), ..Default::default() };
         let req = Request::get(params.to_yuri());
         fetch_and_send(req, tx, |res| {
             // Convert the response to a pig object

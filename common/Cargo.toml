@@ -11,7 +11,10 @@ form_urlencoded.workspace = true
 serde.workspace = true
 serde_url_params.workspace = true
 uuid.workspace = true
+
+# server depends
+diesel = { workspace = true, optional = true }
 rocket = { workspace = true, optional = true }
 
 [features]
-server = ["dep:rocket"]
+server = ["dep:diesel", "dep:rocket"]

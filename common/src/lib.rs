@@ -1,25 +1,42 @@
-mod yuri;
+pub mod yuri;
 
-use chrono::{DateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+#[cfg(feature = "server")]
+pub mod schema;
+
+#[cfg(feature = "server")]
+use diesel::{AsChangeset, Identifiable, Insertable, Queryable, Selectable};
 
 /// The relative base URL for all Pig API routes
 pub const PIG_API_ROOT: &str = "/api/pigs/";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "server", derive(AsChangeset, Identifiable, Insertable, Queryable, Selectable))]
+#[cfg_attr(feature = "server", diesel(table_name = crate::schema::pigs))]
+#[cfg_attr(feature = "server", diesel(check_for_backend(diesel::pg::Pg)))]
+#[cfg_attr(feature = "server", diesel(treat_none_as_null = true))]
 pub struct Pig {
+    // as this is the key in the db it won't be changed, no extra work needed
     pub id: Uuid,
+
     // never, never, never, never, never, never, NEVER change this to a str or else it will FUCK EVERYTHING
     pub name: String,
-    pub created: DateTime<Utc>,
+
+    // skip updating this field in the db as we don't want it to change
+    // TODO enable this in diesel 2.3.0
+    // https://github.com/diesel-rs/diesel/pull/4364
+    //#[cfg_attr(feature = "server", diesel(skip_update))]
+    pub created: NaiveDateTime,
 }
 
 impl Pig {
     /// Creates a new pig with a random UUID and the given name at the current
     /// timestamp.
     pub fn create(name: &str) -> Pig {
-        Pig { id: Uuid::new_v4(), name: name.to_owned(), created: Utc::now() }
+        Pig { id: Uuid::new_v4(), name: name.to_owned(), created: Utc::now().naive_utc() }
     }
 
     /// Merges this pig and the given one together, using the current pig as a
@@ -46,11 +63,13 @@ pub struct PigFetchQuery {
     // TODO add better functions for declaration, e.g. with_id(), with_ids(), with_name()
     pub id: Option<Vec<String>>,
     pub name: Option<String>,
+    pub limit: u32,
+    pub offset: u32,
 }
 
 impl Default for PigFetchQuery {
     fn default() -> Self {
-        Self { id: None, name: None }
+        Self { id: None, name: None, limit: 100, offset: 0 }
     }
 }
 

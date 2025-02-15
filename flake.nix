@@ -132,8 +132,9 @@
                 CARGO_MAKE_WORKSPACE_SKIP_MEMBERS = "common";
 
                 # Env vars for test runs, paths should be relative to ./run
-                PIGWEB_CLIENT_PATH = "../client/dist";
                 PIGWEB_CONFIG = "./PigWeb.toml";
+                PIGWEB_CLIENT_PATH = "../client/dist";
+                PIGWEB_DATABASE_URI = "${DATABASE_URL}";
                 ROCKET_CONFIG = "./Rocket.toml";
 
                 # Postgres vars, commands are run by cargo-make
