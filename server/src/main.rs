@@ -13,6 +13,20 @@ use std::sync::Mutex;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("data/migrations");
 
+/// /api root path just to verify the backend is online
+#[get("/")]
+async fn api_root() -> &'static str {
+    "             __,---.__
+        __,-'         `-.
+       /_ /_,'           \\&
+       _,''               \\
+      (\")            .    |
+ api?   ``--|__|--..-'`.__|
+\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n
+(art by jrei https://ascii.co.uk/art/pig)
+"
+}
+
 // Start the web sever using the launch macro
 #[launch]
 async fn rocket() -> _ {
@@ -36,5 +50,6 @@ async fn rocket() -> _ {
         .manage(Mutex::new(config))
         .manage(Mutex::new(db_connection))
         .mount("/", FileServer::from(client_path))
+        .mount("/api", routes![api_root])
         .mount(PIG_API_ROOT, get_pig_api_routes())
 }
