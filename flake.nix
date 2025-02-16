@@ -134,7 +134,7 @@
                 # Env vars for test runs, paths should be relative to ./run
                 PIGWEB_CONFIG = "./PigWeb.toml";
                 PIGWEB_CLIENT_PATH = "../client/dist";
-                PIGWEB_DATABASE_URI = "${DATABASE_URL}";
+                PIGWEB_DATABASE__URI = "${DATABASE_URL}";
                 ROCKET_CONFIG = "./Rocket.toml";
 
                 # Postgres vars, commands are run by cargo-make

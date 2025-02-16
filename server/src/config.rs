@@ -35,7 +35,7 @@ impl Config {
     pub fn load() -> Config {
         Figment::from(Self::default())
             .merge(Toml::file(Env::var_or("PIGWEB_CONFIG", "PigWeb.toml")))
-            .merge(Env::prefixed("PIGWEB_"))
+            .merge(Env::prefixed("PIGWEB_").split("__"))
             .extract()
             .unwrap_or_else(|e| {
                 error!("{}", e);

@@ -19,7 +19,6 @@ async fn rocket() -> _ {
     // Load the config here and convert the client file path to_owned so we can
     // move it to the mutex later.
     let config = Config::load();
-    //dbg!(&config);
     let client_path = config.client_path.to_owned();
 
     // Init DB connection
