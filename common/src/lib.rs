@@ -59,21 +59,25 @@ impl Pig {
 #[derive(Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "server", derive(rocket::FromForm))]
 pub struct PigFetchQuery {
-    // TODO add limit on number of results here? maybe upper and lower bound? idfk
+    // NOTE: all of these MUST be options or else Rocket won't recognize the query params
     // TODO add better functions for declaration, e.g. with_id(), with_ids(), with_name()
     pub id: Option<Vec<String>>,
     pub name: Option<String>,
-    pub limit: u32,
-    pub offset: u32,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
 }
 
 impl Default for PigFetchQuery {
     fn default() -> Self {
-        Self { id: None, name: None, limit: 100, offset: 0 }
+        Self { id: None, name: None, limit: Some(Self::get_default_limit()), offset: Some(0) }
     }
 }
 
 impl PigFetchQuery {
+    pub fn get_default_limit() -> u32 {
+        100
+    }
+
     pub fn to_yuri(&self) -> String {
         yuri!(PIG_API_ROOT, "fetch" ;? query!(self))
     }

@@ -1,14 +1,11 @@
-use chrono::{TimeZone, Utc};
-use diesel::query_builder::QueryBuilder;
-use diesel::{sql_query, ExpressionMethods, Insertable, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
-use diesel_full_text_search::{to_tsquery, to_tsvector};
-use pigweb_common::{query, schema, Pig, PigFetchQuery};
-use rocket::form::validate::Contains;
+use diesel::{ExpressionMethods, PgConnection, PgTextExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
+use diesel_full_text_search::{plainto_tsquery, to_tsvector, TsVectorExtensions};
+use pigweb_common::{schema, Pig, PigFetchQuery};
 use rocket::http::Status;
 use rocket::response::status::Created;
 use rocket::serde::json::Json;
 use rocket::{Route, State};
-use std::error::Error;
+use std::ops::DerefMut;
 use std::str::FromStr;
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -19,7 +16,7 @@ pub fn get_pig_api_routes() -> Vec<Route> {
 
 #[post("/create?<name>")]
 async fn api_pig_create(
-    db_connection: State<Mutex<PgConnection>>,
+    db_connection: &State<Mutex<PgConnection>>,
     name: &str,
 ) -> Result<Created<Json<Pig>>, (Status, &'static str)> {
     // TODO deduplicate uuids and names
@@ -29,7 +26,7 @@ async fn api_pig_create(
 
     // Save it to the DB
     let mut db_connection = db_connection.lock().unwrap();
-    let sql_res = diesel::insert_into(schema::pigs::table).values(&pig).execute(db_connection.into());
+    let sql_res = diesel::insert_into(schema::pigs::table).values(&pig).execute(db_connection.deref_mut());
 
     if sql_res.is_ok() {
         // Respond with a path to the pig and the object itself, unfortunately the location path is mandatory
@@ -43,14 +40,14 @@ async fn api_pig_create(
 
 #[put("/update", data = "<pig>")]
 async fn api_pig_update(
-    db_connection: State<Mutex<PgConnection>>,
+    db_connection: &State<Mutex<PgConnection>>,
     pig: Json<Pig>,
 ) -> Result<Json<Pig>, (Status, &'static str)> {
     let pig = pig.into_inner();
     let mut db_connection = db_connection.lock().unwrap();
 
     // Because Pig derives Identifiable and AsChangeset it just kinda knows what needs to be updated
-    let sql_res = diesel::update(schema::pigs::table).set(&pig).get_result(db_connection.into());
+    let sql_res = diesel::update(schema::pigs::table).set(&pig).get_result(db_connection.deref_mut());
 
     if sql_res.is_ok() {
         // Return the updated pig
@@ -69,7 +66,8 @@ async fn api_pig_delete(db_connection: &State<Mutex<PgConnection>>, id: &str) ->
     };
 
     let mut db_connection = db_connection.lock().unwrap();
-    let sql_res = diesel::delete(schema::pigs::table.filter(schema::pigs::id.eq(uuid))).execute(db_connection.into());
+    let sql_res =
+        diesel::delete(schema::pigs::table.filter(schema::pigs::id.eq(uuid))).execute(db_connection.deref_mut());
 
     if sql_res.is_ok() {
         (Status::NoContent, "Pig successfully deleted")
@@ -85,23 +83,27 @@ async fn api_pig_fetch(
     query: PigFetchQuery,
 ) -> Result<Json<Vec<Pig>>, (Status, &'static str)> {
     let mut ids: Option<Vec<Uuid>> = None;
+    let mut limit = PigFetchQuery::get_default_limit();
 
     // Convert IDs to UUIDs, if present
     // https://stackoverflow.com/a/16756324
-    if query.id.is_some() {
-        match query.id.unwrap_or_default().into_iter().map(|e| uuid::Uuid::from_str(e.as_str())).collect() {
+    if let Some(ref id) = query.id {
+        match id.iter().map(|e| uuid::Uuid::from_str(e.as_str())).collect() {
             Ok(i) => ids = Some(i),
             Err(_) => return Err((Status::BadRequest, "Invalid UUID input")),
         }
     }
 
     // Start constructing the SQL query
-    let mut sql_query: dyn QueryBuilder<_> = schema::pigs::table;
+    let mut sql_query = schema::pigs::table.into_boxed();
 
     // Filter by name, if specified
-    if let Some(query_name) = query.name {
+    if let Some(ref query_name) = query.name {
         // This performs a full text search
-        sql_query = sql_query.filter(to_tsvector(schema::pigs::name).matches(to_tsquery(query_name)));
+        // https://www.slingacademy.com/article/implementing-fuzzy-search-with-postgresql-full-text-search/?#implementing-fuzzy-matching-with-fts
+        sql_query = sql_query
+            .filter(to_tsvector(schema::pigs::name).matches(plainto_tsquery(query_name)))
+            .or_filter(schema::pigs::name.ilike(format!("%{}%", query_name)));
     }
 
     // Filter by id, if specified
@@ -109,14 +111,21 @@ async fn api_pig_fetch(
         sql_query = sql_query.filter(schema::pigs::id.eq_any(query_ids));
     }
 
+    // Set the limit, if present
+    if let Some(l) = query.limit {
+        limit = l;
+    }
+
     // Set the offset, if present
-    if query.offset > 0 {
-        sql_query = sql_query.offset(query.offset as i64);
+    if let Some(offset) = query.offset {
+        if offset > 0 {
+            sql_query = sql_query.offset(offset as i64);
+        }
     }
 
     // Set the limit and submit the query to the DB
-    let db_connection = db_connection.lock().unwrap();
-    let sql_res = sql_query.limit(query.limit as i64).select(Pig::as_select()).load(db_connection);
+    let mut db_connection = db_connection.lock().unwrap();
+    let sql_res = sql_query.limit(limit as i64).select(Pig::as_select()).load(db_connection.deref_mut());
 
     if sql_res.is_ok() {
         Ok(Json(sql_res.unwrap()))

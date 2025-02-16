@@ -46,7 +46,7 @@ impl Config {
 
 // https://www.postgresql.org/docs/9.4/libpq-connect.html#LIBPQ-CONNSTRING
 #[derive(Debug, Serialize, Deserialize)]
-struct Database {
+pub struct Database {
     pub uri: Option<String>,
     pub host: Option<String>,
     pub port: Option<u16>,
@@ -69,14 +69,14 @@ impl Default for Database {
 }
 
 impl Database {
-    pub fn to_pg_connection_string(&self) -> &str {
+    pub fn to_pg_connection_string(&self) -> String {
         if let Some(uri) = self.uri.to_owned() {
-            uri.as_str()
+            uri
         } else {
             let mut res = String::new();
 
             if let Some(host) = self.host.to_owned() {
-                res += format!("host='{:?}' ", host).as_str();
+                res += format!("host='{}' ", host).as_str();
             }
 
             if let Some(port) = self.port.to_owned() {
@@ -84,18 +84,18 @@ impl Database {
             }
 
             if let Some(dbname) = self.dbname.to_owned() {
-                res += format!("dbname='{:?}' ", dbname).as_str();
+                res += format!("dbname='{}' ", dbname).as_str();
             }
 
             if let Some(user) = self.user.to_owned() {
-                res += format!("user='{:?}' ", user).as_str();
+                res += format!("user='{}' ", user).as_str();
             }
 
             if let Some(password) = self.password.to_owned() {
-                res += format!("password='{:?}' ", password).as_str();
+                res += format!("password='{}' ", password).as_str();
             }
 
-            res.as_str()
+            res
         }
     }
 }
