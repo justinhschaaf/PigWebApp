@@ -66,8 +66,7 @@ pub struct PigWebClient {
     #[serde(skip)]
     data: ClientDataHandler,
 
-    // The current search query, opt out of serialization
-    #[serde(skip)]
+    // The current search query
     query: String,
 
     // The current list of search results
@@ -92,6 +91,7 @@ pub struct PigWebClient {
     dirty_modal_action: DirtyAction,
 
     // Whether to show the modal error messages are displayed on
+    // TODO swap error modal for banner
     #[serde(skip)]
     error_modal: bool,
 
@@ -107,7 +107,7 @@ impl Default for PigWebClient {
             colorix: Colorix::default(), // Properly initialized in new()
             data: ClientDataHandler::default(),
             query: String::default(),
-            query_results: Some(Vec::new()),
+            query_results: None,
             selection: None,
             dirty: false,
             delete_modal: false,
@@ -161,6 +161,9 @@ impl PigWebClient {
         if let Some(storage) = cc.storage {
             res = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
         }
+
+        // Initialize pig list
+        res.do_query();
 
         // Respond with the theme + the default or loaded data
         Self { colorix, ..res }
@@ -248,13 +251,7 @@ impl PigWebClient {
         ui.horizontal(|ui| {
             // Search bar, perform a search if it's been changed
             if ui.add(TextEdit::singleline(&mut self.query).hint_text("Search")).changed() {
-                if !self.query.is_empty() {
-                    self.do_query();
-                } else {
-                    // We already know there's gonna be no results if your query is blank
-                    self.query_results = Some(Vec::new());
-                    self.data.discard_pig_fetch();
-                }
+                self.do_query();
             }
 
             // Pig create button, it's only enabled when you have something in the search bar
@@ -268,8 +265,8 @@ impl PigWebClient {
         ui.add_space(4.0);
 
         // Only render the results table if we have results to show
+        // TODO add pagination
         if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
-            // let Some(pigs) = self.query_results.as_mut()
             egui_extras::TableBuilder::new(ui)
                 .striped(true)
                 .resizable(false)
