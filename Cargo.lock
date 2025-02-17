@@ -2313,16 +2313,12 @@ dependencies = [
 name = "pigweb_server"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "diesel",
  "diesel_full_text_search",
  "diesel_migrations",
- "form_urlencoded",
- "log",
  "pigweb_common",
  "rocket",
  "serde",
- "serde_url_params",
  "uuid",
 ]
 
