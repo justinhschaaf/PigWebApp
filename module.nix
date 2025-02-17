@@ -11,11 +11,12 @@ in {
             type = lib.types.bool;
             description = "Whether to open the firewall for the PigWeb server.";
         };
-        rocket = lib.mkOption {
+        config = lib.mkOption {
             default = {};
             description = ''
-                The configuration for the backend Rocket web server. You can
-                view all available options at <https://rocket.rs/guide/v0.5/configuration/#overview>
+                The configuration for the PigWeb server. Also includes options
+                for the underlying Rocket web server, all available optiosn for
+                which you can view at <https://rocket.rs/guide/v0.5/configuration/#overview>
                 Does not support profiles.
             '';
             type = lib.types.submodule {
@@ -25,14 +26,6 @@ in {
                     default = 8000;
                     description = "Port to serve on.";
                 };
-            };
-        };
-        config = lib.mkOption {
-            default = {};
-            description = "The configuration for the PigWeb server itself.";
-            type = lib.types.sobmodule {
-                freeformType = format.type;
-                options = {};
             };
         };
         environmentFile = lib.mkOption {
@@ -55,7 +48,6 @@ in {
 
         # Enable systemd service
         systemd.services."pigweb" = let
-            rocketConfigFile = format.generate "Rocket.toml" cfg.rocket;
             pigwebConfigFile = format.generate "PigWeb.toml" cfg.config;
         in {
             script = "${lib.getExe self.outputs.packages.${pkgs.system}.pigweb_server}";
@@ -64,7 +56,6 @@ in {
             after = [ "network-online.target" ];
             environment = {
                 PIGWEB_CONFIG = "${pigwebConfigFile}";
-                ROCKET_CONFIG = "${rocketConfigFile}";
                 PIGWEB_CLIENT_PATH = "${self.outputs.packages.${pkgs.system}.pigweb_client}";
             };
             serviceConfig = {

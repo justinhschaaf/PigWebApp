@@ -8,6 +8,7 @@ use crate::pigapi::get_pig_api_routes;
 use diesel::{Connection, PgConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use pigweb_common::PIG_API_ROOT;
+use rocket::fairing::AdHoc;
 use rocket::fs::FileServer;
 use std::sync::Mutex;
 
@@ -30,9 +31,9 @@ async fn api_root() -> &'static str {
 // Start the web sever using the launch macro
 #[launch]
 async fn rocket() -> _ {
-    // Load the config here and convert the client file path to_owned so we can
-    // move it to the mutex later.
-    let config = Config::load();
+    // Load the config here for the db connection and client path
+    let figment = Config::load_figment();
+    let config = Config::load_from_figment(&figment);
     let client_path = config.client_path.to_owned();
 
     // Init DB connection
@@ -46,9 +47,9 @@ async fn rocket() -> _ {
     };
 
     // Init Rocket
-    rocket::build()
-        .manage(Mutex::new(config))
+    rocket::custom(figment)
         .manage(Mutex::new(db_connection))
+        .attach(AdHoc::config::<Config>())
         .mount("/", FileServer::from(client_path))
         .mount("/api", routes![api_root])
         .mount(PIG_API_ROOT, get_pig_api_routes())

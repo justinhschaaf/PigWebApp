@@ -2317,7 +2317,6 @@ dependencies = [
  "diesel",
  "diesel_full_text_search",
  "diesel_migrations",
- "figment",
  "form_urlencoded",
  "log",
  "pigweb_common",

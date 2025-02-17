@@ -26,7 +26,6 @@ uuid = { version = "1.11.0", features = ["v4", "js", "serde"] }
 diesel = { version = "2.2.7", features = ["chrono", "postgres", "serde_json", "uuid"] }
 diesel_full_text_search = "2.2.0"
 diesel_migrations = "2.2.0"
-figment = "0.10.19"
 rocket = { version = "0.5.1", features = ["json"] }
 
 # client dependencies

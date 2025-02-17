@@ -135,7 +135,6 @@
                 PIGWEB_CONFIG = "./PigWeb.toml";
                 PIGWEB_CLIENT_PATH = "../client/dist";
                 PIGWEB_DATABASE__URI = "${DATABASE_URL}";
-                ROCKET_CONFIG = "./Rocket.toml";
 
                 # Postgres vars, commands are run by cargo-make
                 # https://zeroes.dev/p/nix-recipe-for-postgresql/

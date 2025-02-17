@@ -11,7 +11,6 @@ chrono.workspace = true
 diesel.workspace = true
 diesel_full_text_search.workspace = true
 diesel_migrations.workspace = true
-figment.workspace = true
 form_urlencoded.workspace = true
 log.workspace = true
 rocket.workspace = true
