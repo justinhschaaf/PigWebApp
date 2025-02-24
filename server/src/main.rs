@@ -12,7 +12,7 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use pigweb_common::{AUTH_API_ROOT, PIG_API_ROOT};
 use rocket::fairing::AdHoc;
 use rocket::fs::FileServer;
-use rocket_oauth2::OAuth2;
+use rocket_oauth2::{HyperRustlsAdapter, OAuth2, OAuthConfig};
 use std::sync::Mutex;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("data/migrations");
@@ -38,6 +38,7 @@ async fn rocket() -> _ {
     let figment = Config::load_figment();
     let config = Config::load_from_figment(&figment);
     let client_path = config.client_path.to_owned();
+    let oidc_config = config.oidc.as_ref();
 
     // Init DB connection
     let connection_str = config.database.to_pg_connection_string();
@@ -48,14 +49,23 @@ async fn rocket() -> _ {
     if db_connection.run_pending_migrations(MIGRATIONS).is_err() {
         panic!("Unable to migrate database to the latest schema.");
     };
-    // TODO make sure OAuth2 uses custom config
+
     // Init Rocket
-    rocket::custom(figment)
+    let mut rocket = rocket::custom(figment)
         .manage(Mutex::new(db_connection))
         .attach(AdHoc::config::<Config>())
-        .attach(OAuth2::<OpenIDAuth>::fairing("generic_oauth"))
         .mount("/", FileServer::from(client_path))
         .mount("/api", routes![api_root])
         .mount(AUTH_API_ROOT, get_auth_api_routes())
-        .mount(PIG_API_ROOT, get_pig_api_routes())
+        .mount(PIG_API_ROOT, get_pig_api_routes());
+
+    // Make sure OAuth2 uses custom config, if defined
+    if let Some(oidc_config) = oidc_config {
+        rocket =
+            rocket.attach(OAuth2::<OpenIDAuth>::custom(HyperRustlsAdapter::default(), oidc_config.to_oauth_config()));
+    } else {
+        rocket = rocket.attach(OAuth2::<OpenIDAuth>::fairing("generic_oauth2"));
+    }
+
+    rocket
 }

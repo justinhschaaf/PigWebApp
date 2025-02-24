@@ -30,9 +30,8 @@ pub struct Pig {
 impl Pig {
     /// Creates a new pig with a random UUID and the given name at the current
     /// timestamp.
-    pub fn create(name: &str) -> Pig {
-        // TODO add user param
-        Pig { id: Uuid::new_v4(), name: name.to_owned(), created: Utc::now().naive_utc(), creator: Uuid::default() }
+    pub fn new(name: &str, creator: &Uuid) -> Pig {
+        Pig { id: Uuid::new_v4(), name: name.to_owned(), created: Utc::now().naive_utc(), creator: creator.to_owned() }
     }
 
     /// Merges this pig and the given one together, using the current pig as a
