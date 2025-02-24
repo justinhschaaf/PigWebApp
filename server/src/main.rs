@@ -1,15 +1,18 @@
 #[macro_use]
 extern crate rocket;
+mod auth;
 mod config;
 mod pigapi;
 
+use crate::auth::{get_auth_api_routes, OpenIDAuth};
 use crate::config::Config;
 use crate::pigapi::get_pig_api_routes;
 use diesel::{Connection, PgConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use pigweb_common::PIG_API_ROOT;
+use pigweb_common::{AUTH_API_ROOT, PIG_API_ROOT};
 use rocket::fairing::AdHoc;
 use rocket::fs::FileServer;
+use rocket_oauth2::OAuth2;
 use std::sync::Mutex;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("data/migrations");
@@ -45,12 +48,14 @@ async fn rocket() -> _ {
     if db_connection.run_pending_migrations(MIGRATIONS).is_err() {
         panic!("Unable to migrate database to the latest schema.");
     };
-
+    // TODO make sure OAuth2 uses custom config
     // Init Rocket
     rocket::custom(figment)
         .manage(Mutex::new(db_connection))
         .attach(AdHoc::config::<Config>())
+        .attach(OAuth2::<OpenIDAuth>::fairing("generic_oauth"))
         .mount("/", FileServer::from(client_path))
         .mount("/api", routes![api_root])
+        .mount(AUTH_API_ROOT, get_auth_api_routes())
         .mount(PIG_API_ROOT, get_pig_api_routes())
 }
