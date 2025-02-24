@@ -111,6 +111,7 @@ ignore_errors = true # errors if the db server already exists, we can ignore tha
 cwd = "run"
 command = "initdb"
 args = ["-U", "${PGUSER}"]
+dependencies = ["mk-run-dir"]
 
 [tasks.db]
 description = "Starts the development PostgreSQL server."
@@ -122,7 +123,6 @@ dependencies = ["db-init"]
 
 [tasks.db-create]
 description = "Creates the database for the current user on the PostgreSQL development server."
-private = true
 ignore_errors = true # errors if the db already exists, we can ignore that
 cwd = "run"
 command = "createdb"
