@@ -1,20 +1,39 @@
 use crate::config::Config;
+use chrono::{DateTime, Utc};
+use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
+use diesel::{
+    ExpressionMethods, NullableExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper,
+};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use pigweb_common::pigs::PigFetchQuery;
 use pigweb_common::users::{User, SYSTEM_USER};
-use pigweb_common::{users, OpenIDAuth, COOKIE_JWT, COOKIE_USER};
+use pigweb_common::{schema, users, OpenIDAuth, COOKIE_JWT, COOKIE_USER};
 use rocket::http::{Cookie, CookieJar, SameSite, Status};
 use rocket::outcome::try_outcome;
 use rocket::outcome::Outcome::{Error, Forward, Success};
 use rocket::request::{FromRequest, Outcome};
+use rocket::response::status::Created;
 use rocket::response::Redirect;
-use rocket::serde::json::{serde_json, Value};
-use rocket::{Request, Route};
+use rocket::serde::json::{json, serde_json, Json, Value};
+use rocket::serde::{Deserialize, Serialize};
+use rocket::{Request, Route, State};
 use rocket_oauth2::{OAuth2, TokenResponse};
 use std::collections::BTreeMap;
+use std::ops::DerefMut;
+use std::sync::Mutex;
+use uuid::Uuid;
 
 pub struct AuthenticatedUser {
-    pub jwt: Option<Value>,
+    pub jwt: Option<Claims>,
     pub user: User,
+}
+
+impl AuthenticatedUser {
+    fn invalidate_session(cookies: &CookieJar) -> Outcome<AuthenticatedUser, Self::Error> {
+        cookies.remove_private(COOKIE_JWT);
+        cookies.remove_private(COOKIE_USER);
+        Forward(Status::Unauthorized)
+    }
 }
 
 impl<'r> FromRequest<'r> for AuthenticatedUser {
@@ -22,33 +41,202 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
 
     // see https://github.com/jebrosen/rocket_oauth2/blob/b0971d6d6e0e1422306e397bc3e018c1ec822013/examples/user_info/src/main.rs#L18-L30
     async fn from_request(request: &'r Request<'_>) -> Outcome<AuthenticatedUser, Self::Error> {
-        // First, check the config to see if authentication is actually configured
+        // Get the request guards we need
         let config = try_outcome!(request.guard::<&Config>().await);
+        let cookies = try_outcome!(request.guard::<&CookieJar<'_>>().await);
+        let db_connection = try_outcome!(request.guard::<&State<Mutex<PgConnection>>>().await);
 
+        // First, check the config to see if authentication is actually configured
         // If authentication isn't configured, pass the challenge and return the system user
         if config.oidc.as_ref().is_none() {
             return Success(AuthenticatedUser { jwt: None, user: SYSTEM_USER });
         }
 
-        // If there are any errors fetching the cookies, pass it on
-        let cookies = try_outcome!(request.guard::<&CookieJar<'_>>().await);
-
         // Get the JWT cookie and attempt to parse it to a Value
-        if let Some(cookie) = cookies.get_private(COOKIE_JWT) {
-            if let Some(jwt) = serde_json::from_str(cookie.value()).ok() {
+        if let Some(jwt_cookie) = cookies.get_private(COOKIE_JWT) {
+            // We need to declare this first because the if-let statement doesn't like turbofish syntax to determine the inner type
+            let jwt_opt: Option<Claims> = serde_json::from_str(jwt_cookie.value()).ok();
+            if let Some(jwt) = jwt_opt {
+                // Check if the JWT expired, or if we couldn't get it, expire it anyway
+                if jwt.exp * 1000 <= Utc::now().timestamp_millis() {
+                    // Invalidate the session
+                    return AuthenticatedUser::invalidate_session(cookies);
+                }
 
-                // We're only allowed to use the subject (sub) and issuer (iss) from OIDC to uniquely identify a user
-                // https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability
+                let mut db_connection = db_connection.lock().unwrap();
+                let mut user_res: Option<User> = None;
 
-                // TODO check expiration on JWT, invalidate session if it has expired
-                // TODO fetch user info from db for valid JWT, make sure DB user info is up to date, then return that as a Success
-                //return Success(GenericOAuth { jwt });
+                // If we already have a user cookie
+                if let Some(user_cookie) = cookies.get_private(COOKIE_USER) {
+                    user_res = serde_json::from_str(user_cookie.value()).ok();
+
+                    // If we can't read the user cookie, assume it's invalid
+                    if user_res.is_none() {
+                        return AuthenticatedUser::invalidate_session(cookies);
+                    }
+
+                    // At this point, we only need to check if the user is expired in the DB
+                    let sql_res = schema::users::table
+                        .filter(schema::users::columns::id.eq(user_res.as_ref().unwrap().id))
+                        .limit(1)
+                        .select(schema::users::columns::session_exp.nullable())
+                        .load::<Option<NaiveDateTime>>(db_connection.deref_mut());
+
+                    // We don't care about the error condition here
+                    if let Ok(res) = sql_res {
+                        if res.len() > 0 {
+                            if let Some(db_exp) = res[0] {
+                                // If the db expiration is less than now, invalidate
+                                if db_exp.to_owned() <= Utc::now().naive_utc() {
+                                    return AuthenticatedUser::invalidate_session(cookies);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Get the user info from the DB. We're only allowed to use
+                    // the subject (sub) and issuer (iss) from OIDC to uniquely
+                    // identify a user.
+                    // https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability
+                    let jwt_issuer = jwt.iss.to_owned();
+                    let jwt_subject = jwt.sub.to_owned();
+
+                    // Fetch the user from the DB by the jwt_issuer and jwt_subject
+                    let user_result: QueryResult<Vec<User>> = schema::users::table
+                        .filter(schema::users::columns::sso_issuer.eq(jwt_issuer))
+                        .filter(schema::users::columns::sso_subject.eq(jwt_subject))
+                        .limit(1) // There should only be 1 user with this issuer and subject
+                        .select(User::as_select())
+                        .load(db_connection.deref_mut());
+
+                    // Whether we need to create a new user
+                    let mut create_new_user = true;
+
+                    // If we have a user response
+                    if let Ok(user_vec) = user_result {
+                        if user_vec.len() > 0 {
+                            // DO NOT check session expiration here as if the
+                            // user did not have a user cookie saved, then the
+                            // session will already be expired in the db.
+                            let mut user = user_vec[0].to_owned();
+
+                            // Update our user info from the new JWT info
+                            user.seen = Utc::now().naive_utc();
+                            user.session_exp =
+                                Some(DateTime::from_timestamp(jwt.exp, 0).unwrap_or_default().naive_utc());
+
+                            if let Some(preferred_username) = jwt.preferred_username.as_ref() {
+                                user.username = preferred_username.to_owned();
+                            }
+
+                            if let Some(groups) = jwt.groups.as_ref() {
+                                user.groups = groups.to_owned();
+                            }
+
+                            // Put the new user info on our DB
+                            let sql_res =
+                                diesel::update(schema::users::table).set(&user).get_result(db_connection.deref_mut());
+
+                            if sql_res.is_ok() {
+                                // Save the user result
+                                user_res = Some(user);
+                                create_new_user = false;
+                            } else {
+                                error!("Unable to update user {:?}: {:?}", user, sql_res.unwrap_err());
+                                return Forward(Status::InternalServerError);
+                            }
+                        }
+                    }
+
+                    // This is first time login, we need to create the user
+                    if create_new_user {
+                        if let Some(preferred_username) = jwt.preferred_username.as_ref() {
+                            // Create a new user
+                            let session_exp =
+                                DateTime::from_timestamp(jwt.exp.to_owned(), 0).unwrap_or_default().naive_utc();
+                            let user = User::new(
+                                preferred_username.to_owned(),
+                                jwt.groups.as_ref().unwrap_or_default().to_owned(),
+                                jwt.sub.to_owned(),
+                                jwt.iss.to_owned(),
+                                Some(session_exp),
+                            );
+
+                            // ...and save it to the DB
+                            let sql_res = diesel::insert_into(schema::users::table)
+                                .values(&user)
+                                .execute(db_connection.deref_mut());
+
+                            if sql_res.is_ok() {
+                                user_res = Some(user);
+                            } else {
+                                error!("Unable to save new user {:?}: {:?}", user, sql_res.unwrap_err());
+                                return Forward(Status::InternalServerError);
+                            }
+                        }
+                    }
+                }
+
+                // Return the user if we have it
+                if user_res.is_some() {
+                    // Save the user cookie
+                    cookies.add_private(
+                        Cookie::build((
+                            COOKIE_USER,
+                            serde_json::to_string(&user_res).unwrap_or_else(|e| {
+                                error!("Unable to convert User struct into JSON: {:?}", e);
+                                "{}".to_owned()
+                            }),
+                        ))
+                        .same_site(SameSite::Lax)
+                        .build(),
+                    );
+
+                    return Success(AuthenticatedUser { jwt: Some(jwt), user: user_res.unwrap() });
+                }
             }
         }
 
         // If there are any errors, you're probably unauthorized
-        Forward(Status::Unauthorized)
+        AuthenticatedUser::invalidate_session(cookies)
     }
+}
+
+/// Represents the claims returned by a JWT response. Includes all [mandatory
+/// claims](https://openid.net/specs/openid-connect-core-1_0.html#IDToken) as
+/// defined in the spec along with the few[optional claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims)
+/// we care about. Any other information is discarded.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Claims {
+    /// Issuer Identifier for the issuer of the response. Should be a
+    /// case-sensitive URL without no query or fragment components.
+    pub iss: String,
+
+    /// Subject Identifier. A locally unique and never-reassigned identifier
+    /// within the Issuer for the end-uer. Case-sensitive string no longer than
+    /// 255 ASCII characters long.
+    pub sub: String,
+
+    /// Audience(s) that this ID Token is intended for. Must contain the client
+    /// ID.
+    pub aud: String,
+
+    /// Expiration time on or after which the ID Token MUST NOT be accepted, in
+    /// seconds since Unix Epoch.
+    pub exp: i64,
+
+    /// The time at which the JWT was issued, in seconds since Unix Epoch.
+    pub iat: i64,
+
+    /// The time at which end-user authentication occurred, in seconds since
+    /// Unix Epoch.
+    pub auth_time: Option<i64>,
+
+    /// Shorthand name by which the end-user wishes to be referred to.
+    pub preferred_username: Option<String>,
+
+    /// List of groups the end-user possesses within the Issuer.
+    pub groups: Option<Vec<String>>,
 }
 
 pub fn get_auth_api_routes() -> Vec<Route> {
@@ -99,7 +287,7 @@ async fn oidc_auth(
         // then, make sure the id_token is actually a string
         if let Some(id_token) = id_token_val.as_str() {
             // after that, decode the JWT and verify the signature
-            let decode_result = jsonwebtoken::decode::<BTreeMap<String, String>>(
+            let decode_result = jsonwebtoken::decode::<Claims>(
                 &id_token,
                 &DecodingKey::from_secret(oidc_config.client_secret.as_ref()),
                 &Validation::new(Algorithm::RS256),

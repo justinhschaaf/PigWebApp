@@ -3,7 +3,7 @@ CREATE TABLE users
 (
     id          uuid PRIMARY KEY,
     username    text      NOT NULL,
-    groups      text[],
+    groups      text[]    NOT NULL,
     created     timestamp NOT NULL,
     seen        timestamp NOT NULL,
     sso_subject text      NOT NULL,

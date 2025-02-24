@@ -13,7 +13,7 @@ diesel::table! {
     users (id) {
         id -> Uuid,
         username -> Text,
-        groups -> Nullable<Array<Nullable<Text>>>,
+        groups -> Array<Text>,
         created -> Timestamp,
         seen -> Timestamp,
         sso_subject -> Text,
@@ -22,7 +22,4 @@ diesel::table! {
     }
 }
 
-diesel::allow_tables_to_appear_in_same_query!(
-    pigs,
-    users,
-);
+diesel::allow_tables_to_appear_in_same_query!(pigs, users,);
