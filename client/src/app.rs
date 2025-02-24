@@ -5,8 +5,8 @@ use chrono::{DateTime, Local};
 use egui::epaint::text::{FontInsert, InsertFontFamily};
 use egui::text::LayoutJob;
 use egui::{
-    menu, Align, Button, CentralPanel, Context, FontData, FontSelection, Label, Layout, ScrollArea, SelectableLabel,
-    Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, Align, Button, CentralPanel, Context, FontData, FontSelection, Label, Layout, OpenUrl, ScrollArea,
+    SelectableLabel, Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
 use egui_colors::tokens::ThemeColor;
 use egui_colors::Colorix;
@@ -14,6 +14,7 @@ use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
 use log::error;
 use pigweb_common::pigs::Pig;
+use pigweb_common::{yuri, AUTH_API_ROOT};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 const THEME_PRIMARY: ThemeColor = ThemeColor::Gray;
@@ -237,7 +238,7 @@ impl PigWebClient {
 
             // Logout
             if ui.button("⎆").clicked() {
-                todo!("Implement when user accounts are completed.");
+                ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/logout/oidc")));
             }
         });
     }
@@ -383,12 +384,10 @@ impl PigWebClient {
                         });
                     });
 
-                    if false {
-                        // disabled until implemented
-                        add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
-                            ui.code("TODO dropdown");
-                        });
-                    }
+                    add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
+                        // TODO actually bother fetching the user data
+                        ui.code(pig.creator.to_string());
+                    });
 
                     add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
                         let create_time = pig.created.and_utc().with_timezone(&Local);
@@ -498,6 +497,9 @@ impl PigWebClient {
 impl eframe::App for PigWebClient {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        // TODO redirect the user if they are not authenticated
+        // ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/login/oidc")));
+
         // Handle all the incoming data
         self.process_promises();
 
