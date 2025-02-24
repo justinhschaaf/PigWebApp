@@ -1,7 +1,8 @@
 use crate::data::Status::{Errored, Pending, Received};
 use ehttp::{Request, Response};
 use log::debug;
-use pigweb_common::{query, yuri, Pig, PigFetchQuery, PIG_API_ROOT};
+use pigweb_common::pigs::{Pig, PigFetchQuery};
+use pigweb_common::{query, yuri, PIG_API_ROOT};
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;

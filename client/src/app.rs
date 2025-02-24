@@ -13,7 +13,7 @@ use egui_colors::Colorix;
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
 use log::error;
-use pigweb_common::Pig;
+use pigweb_common::pigs::Pig;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 const THEME_PRIMARY: ThemeColor = ThemeColor::Gray;
