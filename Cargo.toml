@@ -40,7 +40,7 @@ eframe = { version = "0.31.0", default-features = false, features = [
     "glow", # Use the glow rendering backend. Alternative: "wgpu".
     "persistence", # Enable restoring app state when restarting the app.
 ] }
-ehttp = { version = "0.5.0", features = ["json"] }
+ehttp = { git = "https://github.com/jheidecker/ehttp.git", rev = "3394080225991402e9f0273dac733036d0e1fc18", features = ["json"] }
 
 # web only deps
 wasm-bindgen-futures = "0.4"

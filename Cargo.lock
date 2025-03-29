@@ -930,8 +930,7 @@ dependencies = [
 [[package]]
 name = "ehttp"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59a81c221a1e4dad06cb9c9deb19aea1193a5eea084e8cd42d869068132bf876"
+source = "git+https://github.com/jheidecker/ehttp.git?rev=3394080225991402e9f0273dac733036d0e1fc18#3394080225991402e9f0273dac733036d0e1fc18"
 dependencies = [
  "document-features",
  "js-sys",

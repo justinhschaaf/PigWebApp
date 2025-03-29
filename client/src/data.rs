@@ -1,5 +1,5 @@
 use crate::data::Status::{Errored, Pending, Received};
-use ehttp::{Request, Response};
+use ehttp::{Credentials, Request, Response};
 use log::debug;
 use pigweb_common::pigs::{Pig, PigFetchQuery};
 use pigweb_common::{query, yuri, PIG_API_ROOT};
@@ -57,7 +57,10 @@ impl ClientDataHandler {
         self.pig_create_receiver = Some(rx);
 
         // Submit the request to the server
-        let req = Request::post(yuri!(PIG_API_ROOT, "create" ;? query!("name" = name)), vec![]);
+        let req = Request {
+            credentials: Credentials::SameOrigin,
+            ..Request::post(yuri!(PIG_API_ROOT, "create" ;? query!("name" = name)), vec![])
+        };
         fetch_and_send(req, tx, |res| {
             // Convert the response to a pig object
             let json = res.json::<Pig>();
@@ -94,7 +97,7 @@ impl ClientDataHandler {
         let req = Request::json(yuri!(PIG_API_ROOT, "update"), pig);
         if let Ok(req) = req {
             // Convert the request type from POST to PUT
-            let req = Request { method: "PUT".to_owned(), ..req };
+            let req = Request { method: "PUT".to_owned(), credentials: Credentials::SameOrigin, ..req };
 
             // Now actually submit the request, then relay the result to the channel sender
             // No fancy processing needed for this one
@@ -126,6 +129,7 @@ impl ClientDataHandler {
         // Convert method type to DELETE, ::get method is just a good starter
         let req = Request {
             method: "DELETE".to_owned(),
+            credentials: Credentials::SameOrigin,
             ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = id.to_string().as_str())))
         };
 
@@ -154,7 +158,7 @@ impl ClientDataHandler {
 
         // Submit the request to the server
         let params = PigFetchQuery { name: Some(query.to_owned()), ..Default::default() };
-        let req = Request::get(params.to_yuri());
+        let req = Request { credentials: Credentials::SameOrigin, ..Request::get(params.to_yuri()) };
         fetch_and_send(req, tx, |res| {
             // Convert the response to a pig object
             let json = res.json::<Vec<Pig>>();
