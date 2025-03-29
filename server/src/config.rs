@@ -108,8 +108,8 @@ impl OpenIDConfig {
     pub fn to_oauth_config(&self) -> OAuthConfig {
         OAuthConfig::new(
             StaticProvider {
-                auth_uri: Cow::from(self.auth_uri.as_str()),
-                token_uri: Cow::from(self.token_uri.as_str()),
+                auth_uri: Cow::from(self.auth_uri.to_owned()),
+                token_uri: Cow::from(self.token_uri.to_owned()),
             },
             self.client_id.to_owned(),
             self.client_secret.to_owned(),
