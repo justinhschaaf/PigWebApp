@@ -25,7 +25,7 @@ pub struct AuthenticatedUser {
 }
 
 impl AuthenticatedUser {
-    fn invalidate_session(cookies: &CookieJar) -> Outcome<AuthenticatedUser, Self::Error> {
+    fn invalidate_session(cookies: &CookieJar) -> Outcome<AuthenticatedUser, ()> {
         cookies.remove_private(COOKIE_JWT);
         cookies.remove_private(COOKIE_USER);
         Forward(Status::Unauthorized)
@@ -33,13 +33,14 @@ impl AuthenticatedUser {
 }
 
 impl<'r> FromRequest<'r> for AuthenticatedUser {
-    type Error = &'static str;
+    // This must not be anything for try_outcome!() to work
+    type Error = ();
 
     // see https://github.com/jebrosen/rocket_oauth2/blob/b0971d6d6e0e1422306e397bc3e018c1ec822013/examples/user_info/src/main.rs#L18-L30
-    async fn from_request(request: &'r Request<'_>) -> Outcome<AuthenticatedUser, Self::Error> {
+    async fn from_request(request: &'r Request<'_>) -> Outcome<AuthenticatedUser, ()> {
         // Get the request guards we need
-        let config = try_outcome!(request.guard::<&Config>().await);
-        let cookies = try_outcome!(request.guard::<&CookieJar<'_>>().await);
+        let config = try_outcome!(request.guard::<&State<Config>>().await);
+        let cookies = request.cookies();
         let db_connection = try_outcome!(request.guard::<&State<Mutex<PgConnection>>>().await);
 
         // First, check the config to see if authentication is actually configured
