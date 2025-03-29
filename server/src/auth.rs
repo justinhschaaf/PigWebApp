@@ -245,7 +245,7 @@ pub fn get_auth_api_routes() -> Vec<Route> {
 }
 
 #[get("/")]
-async fn is_authenticated(_user: &AuthenticatedUser) -> Status {
+async fn is_authenticated(_user: AuthenticatedUser) -> Status {
     // If the user isn't signed in, it should return a 401 unauthorized
     // TODO CHECK THIS WORKS AS INTENDED
     Status::Ok

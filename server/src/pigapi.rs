@@ -18,7 +18,7 @@ pub fn get_pig_api_routes() -> Vec<Route> {
 
 #[post("/create?<name>")]
 async fn api_pig_create(
-    auth_user: &AuthenticatedUser,
+    auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     name: &str,
 ) -> Result<Created<Json<Pig>>, (Status, &'static str)> {
@@ -43,7 +43,7 @@ async fn api_pig_create(
 
 #[put("/update", data = "<pig>")]
 async fn api_pig_update(
-    _auth_user: &AuthenticatedUser,
+    _auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     pig: Json<Pig>,
 ) -> Result<Json<Pig>, (Status, &'static str)> {
@@ -64,7 +64,7 @@ async fn api_pig_update(
 
 #[delete("/delete?<id>")]
 async fn api_pig_delete(
-    _auth_user: &AuthenticatedUser,
+    _auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     id: &str,
 ) -> (Status, &'static str) {
@@ -87,7 +87,7 @@ async fn api_pig_delete(
 
 #[get("/fetch?<query..>")]
 async fn api_pig_fetch(
-    _auth_user: &AuthenticatedUser,
+    _auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     query: PigFetchQuery,
 ) -> Result<Json<Vec<Pig>>, (Status, &'static str)> {
