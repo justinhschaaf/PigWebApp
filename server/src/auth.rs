@@ -46,7 +46,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
         // First, check the config to see if authentication is actually configured
         // If authentication isn't configured, pass the challenge and return the system user
         if config.oidc.as_ref().is_none() {
-            return Success(AuthenticatedUser { jwt: None, user: SYSTEM_USER });
+            return Success(AuthenticatedUser { jwt: None, user: User::get_system_user() });
         }
 
         // Get the JWT cookie and attempt to parse it to a Value
