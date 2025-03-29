@@ -131,8 +131,9 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                             }
 
                             // Put the new user info on our DB
-                            let sql_res =
-                                diesel::update(schema::users::table).set(&user).get_result(db_connection.deref_mut());
+                            let sql_res = diesel::update(schema::users::table)
+                                .set(&user)
+                                .get_result::<User>(db_connection.deref_mut());
 
                             if sql_res.is_ok() {
                                 // Save the user result
@@ -153,7 +154,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                                 DateTime::from_timestamp(jwt.exp.to_owned(), 0).unwrap_or_default().naive_utc();
                             let user = User::new(
                                 preferred_username.to_owned(),
-                                jwt.groups.as_ref().unwrap_or_default().to_owned(),
+                                jwt.groups.as_ref().unwrap_or(&Vec::new()).to_owned(), // &Vec doesn't implement default()
                                 jwt.sub.to_owned(),
                                 jwt.iss.to_owned(),
                                 Some(session_exp),
@@ -252,8 +253,9 @@ async fn is_authenticated(_user: &AuthenticatedUser) -> Status {
 async fn oidc_login(oauth2: OAuth2<OpenIDAuth>, config: &State<Config>, cookies: &CookieJar<'_>) -> Redirect {
     // Only force the user to login if it's actually configured
     if let Some(oidc_config) = config.oidc.as_ref() {
-        // Convert Vec<String> into &[&str]
-        let scopes_slice = oidc_config.scopes.iter().map(|e| e.as_str()).collect::<Vec<&str>>().as_slice();
+        // Convert Vec<String> into &[&str], rust complains if scopes_vec isn't saved on its own
+        let scopes_vec = oidc_config.scopes.iter().map(|e| e.as_str()).collect::<Vec<&str>>();
+        let scopes_slice = scopes_vec.as_slice();
         return oauth2.get_redirect(cookies, scopes_slice).unwrap();
     }
 
@@ -329,8 +331,11 @@ async fn oidc_logout(config: &State<Config>, cookies: &CookieJar<'_>) -> Redirec
     cookies.remove_private(COOKIE_USER);
 
     // Redirect the user to the OIDC provider logout page, if present
-    if let Some(oidc_config) = config.oidc.as_ref() {
-        if let Some(logout_uri) = oidc_config.logout_uri.as_ref() {
+    // we have to save the is_some boolean or else rust complains about using config
+    // this is genuinely stupid it's a fucking boolean on an immutable object
+    let is_some = config.oidc.as_ref().is_some();
+    if is_some {
+        if let Some(logout_uri) = config.oidc.as_ref().unwrap().logout_uri.to_owned() {
             return Redirect::to(logout_uri);
         }
     }
