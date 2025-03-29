@@ -1,6 +1,5 @@
 use chrono::{NaiveDate, NaiveDateTime, Utc};
-use diesel::{AsChangeset, Identifiable, Insertable, Queryable, Selectable};
-use rocket::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::borrow::ToOwned;
 use uuid::Uuid;
 

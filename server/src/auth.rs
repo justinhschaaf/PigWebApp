@@ -5,23 +5,19 @@ use diesel::{
     ExpressionMethods, NullableExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation};
-use pigweb_common::pigs::PigFetchQuery;
-use pigweb_common::users::{User, SYSTEM_USER};
-use pigweb_common::{schema, users, OpenIDAuth, COOKIE_JWT, COOKIE_USER};
+use pigweb_common::users::User;
+use pigweb_common::{schema, OpenIDAuth, COOKIE_JWT, COOKIE_USER};
 use rocket::http::{Cookie, CookieJar, SameSite, Status};
 use rocket::outcome::try_outcome;
-use rocket::outcome::Outcome::{Error, Forward, Success};
+use rocket::outcome::Outcome::{Forward, Success};
 use rocket::request::{FromRequest, Outcome};
-use rocket::response::status::Created;
 use rocket::response::Redirect;
-use rocket::serde::json::{json, serde_json, Json, Value};
+use rocket::serde::json::serde_json;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{Request, Route, State};
 use rocket_oauth2::{OAuth2, TokenResponse};
-use std::collections::BTreeMap;
 use std::ops::DerefMut;
 use std::sync::Mutex;
-use uuid::Uuid;
 
 pub struct AuthenticatedUser {
     pub jwt: Option<Claims>,

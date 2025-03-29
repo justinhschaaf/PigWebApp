@@ -1,10 +1,10 @@
 use crate::{query, yuri, PIG_API_ROOT};
 use chrono::{NaiveDateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(feature = "server")]
 use diesel::{AsChangeset, Identifiable, Insertable, Queryable, Selectable};
-use rocket::serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(AsChangeset, Identifiable, Insertable, Queryable, Selectable))]

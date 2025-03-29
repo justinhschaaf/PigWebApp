@@ -4,15 +4,15 @@ mod auth;
 mod config;
 mod pigapi;
 
-use crate::auth::{get_auth_api_routes, OpenIDAuth};
+use crate::auth::get_auth_api_routes;
 use crate::config::Config;
 use crate::pigapi::get_pig_api_routes;
 use diesel::{Connection, PgConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use pigweb_common::{AUTH_API_ROOT, PIG_API_ROOT};
+use pigweb_common::{OpenIDAuth, AUTH_API_ROOT, PIG_API_ROOT};
 use rocket::fairing::AdHoc;
 use rocket::fs::FileServer;
-use rocket_oauth2::{HyperRustlsAdapter, OAuth2, OAuthConfig};
+use rocket_oauth2::{HyperRustlsAdapter, OAuth2};
 use std::sync::Mutex;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("data/migrations");
