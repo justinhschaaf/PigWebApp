@@ -32,6 +32,9 @@ impl AuthenticatedUser {
     }
 }
 
+// resolves E0195, somehow...
+// https://stackoverflow.com/a/69271844
+#[rocket::async_trait]
 impl<'r> FromRequest<'r> for AuthenticatedUser {
     // This must not be anything for try_outcome!() to work
     type Error = ();
