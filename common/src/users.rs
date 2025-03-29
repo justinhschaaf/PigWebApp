@@ -3,16 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::borrow::ToOwned;
 use uuid::Uuid;
 
-pub const SYSTEM_USER: User = User {
-    id: Uuid::default(),
-    username: "admin".to_owned(),
-    groups: vec![],
-    created: NaiveDateTime::default(),
-    seen: NaiveDateTime::default(),
-    sso_subject: String::default(),
-    sso_issuer: "https://self-issued.me".to_owned(),
-    session_exp: Some(NaiveDate::from_ymd_opt(9999, 12, 31).unwrap_or_default().and_hms_opt(23, 59, 59).unwrap()),
-};
+#[cfg(feature = "server")]
+use diesel::{AsChangeset, Identifiable, Insertable, Queryable, Selectable};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "server", derive(AsChangeset, Identifiable, Insertable, Queryable, Selectable))]
@@ -39,5 +31,20 @@ impl User {
     ) -> User {
         let now = Utc::now().naive_utc();
         User { id: Uuid::new_v4(), username, groups, created: now, seen: now, sso_subject, sso_issuer, session_exp }
+    }
+
+    pub fn get_system_user() -> User {
+        User {
+            id: Uuid::default(),
+            username: "admin".to_owned(),
+            groups: vec![],
+            created: NaiveDateTime::default(),
+            seen: NaiveDateTime::default(),
+            sso_subject: String::default(),
+            sso_issuer: "https://self-issued.me".to_owned(),
+            session_exp: Some(
+                NaiveDate::from_ymd_opt(9999, 12, 31).unwrap_or_default().and_hms_opt(23, 59, 59).unwrap(),
+            ),
+        }
     }
 }
