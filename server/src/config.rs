@@ -98,6 +98,7 @@ impl DatabaseConfig {
 pub struct OpenIDConfig {
     pub auth_uri: String,
     pub token_uri: String,
+    pub redirect_uri: Option<String>,
     pub logout_uri: Option<String>,
     pub client_id: String,
     pub client_secret: String,
@@ -113,7 +114,7 @@ impl OpenIDConfig {
             },
             self.client_id.to_owned(),
             self.client_secret.to_owned(),
-            None,
+            self.redirect_uri.to_owned(),
         )
     }
 }
