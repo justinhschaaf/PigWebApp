@@ -241,18 +241,19 @@ pub struct Claims {
 }
 
 pub fn get_auth_api_routes() -> Vec<Route> {
-    routes![oidc_login, oidc_auth, oidc_logout]
+    routes![is_authenticated, oidc_login, oidc_response, oidc_logout]
 }
 
 #[get("/")]
-async fn is_authenticated(_user: AuthenticatedUser) -> Status {
+async fn is_authenticated(_user: AuthenticatedUser) -> &'static str {
     // If the user isn't signed in, it should return a 401 unauthorized
-    // TODO CHECK THIS WORKS AS INTENDED
-    Status::Ok
+    "(◕_◕)
+
+you are signed in. yippee!"
 }
 
 // Redirects users to the login page
-#[get("/login/oidc")]
+#[get("/oidc/login")]
 async fn oidc_login(oauth2: OAuth2<OpenIDAuth>, config: &State<Config>, cookies: &CookieJar<'_>) -> Redirect {
     // Only force the user to login if it's actually configured
     if let Some(oidc_config) = config.oidc.as_ref() {
@@ -267,8 +268,8 @@ async fn oidc_login(oauth2: OAuth2<OpenIDAuth>, config: &State<Config>, cookies:
 
 // Completes the token exchange with the OAuth provider, creates a session
 // cookie, then redirects the user to the app root
-#[get("/auth/oidc")]
-async fn oidc_auth(
+#[get("/oidc/response")]
+async fn oidc_response(
     token_response: TokenResponse<OpenIDAuth>,
     config: &State<Config>,
     cookies: &CookieJar<'_>,
@@ -331,7 +332,7 @@ async fn oidc_auth(
 
 // Removes the user's current session cookies and redirects them to the OIDC
 // provider logout page (if present) or the root page
-#[get("/logout/oidc")]
+#[get("/oidc/logout")]
 async fn oidc_logout(config: &State<Config>, cookies: &CookieJar<'_>) -> Redirect {
     // Remove the current JWT and USER cookies
     cookies.remove_private(COOKIE_JWT);

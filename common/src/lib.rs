@@ -6,7 +6,7 @@ pub mod yuri;
 pub mod schema;
 
 /// The relative base URL for all authentication API routes
-pub const AUTH_API_ROOT: &str = "/api/auth/";
+pub const AUTH_API_ROOT: &str = "/auth/";
 
 /// The relative base URL for all Pig API routes
 pub const PIG_API_ROOT: &str = "/api/pigs/";
