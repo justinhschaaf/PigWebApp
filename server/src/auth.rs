@@ -4,7 +4,7 @@ use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{
     ExpressionMethods, NullableExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper,
 };
-use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation};
 use pigweb_common::users::User;
 use pigweb_common::{schema, OpenIDAuth, COOKIE_JWT, COOKIE_USER};
 use rocket::http::{Cookie, CookieJar, SameSite, Status};
@@ -288,11 +288,15 @@ async fn oidc_auth(
     if let Some(id_token_val) = response_values.get("id_token") {
         // then, make sure the id_token is actually a string
         if let Some(id_token) = id_token_val.as_str() {
+            let mut validation = Validation::default();
+            validation.insecure_disable_signature_validation(); // skip validating alg param
+            validation.set_audience(&[oidc_config.client_id.to_owned()]); // validate aud, should be the client id
+
             // after that, decode the JWT and verify the signature
             let decode_result = jsonwebtoken::decode::<Claims>(
                 &id_token,
                 &DecodingKey::from_secret(oidc_config.client_secret.as_ref()),
-                &Validation::new(Algorithm::RS256),
+                &validation,
             );
 
             if let Ok(jwt) = decode_result {
