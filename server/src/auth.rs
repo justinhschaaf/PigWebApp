@@ -9,7 +9,7 @@ use pigweb_common::users::User;
 use pigweb_common::{schema, OpenIDAuth, COOKIE_JWT, COOKIE_USER};
 use rocket::http::{Cookie, CookieJar, SameSite, Status};
 use rocket::outcome::try_outcome;
-use rocket::outcome::Outcome::{Forward, Success};
+use rocket::outcome::Outcome::{Error, Success};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
 use rocket::serde::json::serde_json;
@@ -28,7 +28,7 @@ impl AuthenticatedUser {
     fn invalidate_session(cookies: &CookieJar) -> Outcome<AuthenticatedUser, ()> {
         cookies.remove_private(COOKIE_JWT);
         cookies.remove_private(COOKIE_USER);
-        Forward(Status::Unauthorized)
+        Error((Status::Unauthorized, ()))
     }
 }
 
@@ -144,7 +144,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                                 create_new_user = false;
                             } else {
                                 error!("Unable to update user {:?}: {:?}", user, sql_res.unwrap_err());
-                                return Forward(Status::InternalServerError);
+                                return Error((Status::InternalServerError, ()));
                             }
                         }
                     }
@@ -172,7 +172,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                                 user_res = Some(user);
                             } else {
                                 error!("Unable to save new user {:?}: {:?}", user, sql_res.unwrap_err());
-                                return Forward(Status::InternalServerError);
+                                return Error((Status::InternalServerError, ()));
                             }
                         }
                     }
