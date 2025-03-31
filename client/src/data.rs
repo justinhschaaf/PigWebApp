@@ -1,18 +1,11 @@
 use crate::data::Status::{Errored, Pending, Received};
-use ehttp::{Request, Response};
+use ehttp::{Credentials, Request, Response};
 use log::debug;
-use pigweb_common::{query, yuri, Pig, PigFetchQuery, PIG_API_ROOT};
+use pigweb_common::pigs::{Pig, PigFetchQuery};
+use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT};
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;
-
-pub struct ClientDataHandler {
-    // PIG API
-    pig_create_receiver: MaybeWaiting<Pig>,
-    pig_update_receiver: MaybeWaiting<Response>,
-    pig_delete_receiver: MaybeWaiting<Response>,
-    pig_fetch_receiver: MaybeWaiting<Vec<Pig>>,
-}
 
 /// Utility type to represent a result we may be waiting on. Named because we
 /// may or may not have a receiver waiting on the result.
@@ -29,159 +22,197 @@ pub enum Status<T> {
     Received(T),
 
     /// There was a problem taking care of this
+    // TODO use std::error::Error instead of strings for responses
     Errored(String),
 
     /// We haven't received a response from the Sender for whatever reason
     Pending,
 }
 
-impl Default for ClientDataHandler {
+/// Defines an individual API endpoint handler. Each handler has three methods:
+/// - `request(input)` submits a request to the API
+/// - `resolve()` checks whether the request received a response and returns it
+/// - `discard()` forgets the previous request which was made
+///
+/// This is designed around immediate-mode GUIs or anything which needs to be
+/// refreshed constantly and where you only care about the last thing submitted
+/// to the server.
+///
+/// Implementing this macro requires four parameters:
+/// - The name of the handler struct
+/// - The input type expected when making a request
+/// - The output type expected from the server
+/// - The expression actually making the request, should return a tokio::sync::oneshot::Receiver
+// this must defined BEFORE the individual endpoints
+macro_rules! endpoint {
+    ($name:ident, $input:ty, $output:ty, $requester:expr) => {
+        pub struct $name {
+            receiver: MaybeWaiting<$output>,
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self { receiver: None }
+            }
+        }
+
+        impl $name {
+            pub fn request(&mut self, input: $input) {
+                self.receiver = Some($requester(input));
+            }
+
+            pub fn resolve(&mut self) -> Status<$output> {
+                let status = check_response_status(&mut self.receiver);
+
+                // Drop the receiver if we have a response
+                if !matches!(&status, Pending) {
+                    self.discard();
+                }
+
+                status
+            }
+
+            pub fn discard(&mut self) {
+                self.receiver = None;
+            }
+        }
+    };
+}
+
+pub struct AuthApi {
+    pub is_authenticated: AuthCheckHandler,
+}
+
+impl Default for AuthApi {
     fn default() -> Self {
+        Self { is_authenticated: AuthCheckHandler::default() }
+    }
+}
+
+endpoint!(AuthCheckHandler, bool, bool, |_ignored: bool| {
+    let (tx, rx) = oneshot::channel();
+
+    // Submit the request to the server
+    let req = Request { credentials: Credentials::SameOrigin, ..Request::get(yuri!(AUTH_API_ROOT)) };
+
+    fetch_and_send(req, tx, |res| {
+        if res.ok {
+            return Ok(true);
+        } else if res.status == 401 {
+            return Ok(false);
+        }
+
+        Err(res.status_text.to_owned())
+    });
+
+    rx
+});
+
+/// Represents the API for working with pigs
+pub struct PigApi {
+    /// Create a new pig given the name as a &str
+    pub create: PigCreateHandler,
+
+    /// Update a pig given the updated Pig struct
+    pub update: PigUpdateHandler,
+
+    /// Delete a pig given the Uuid
+    pub delete: PigDeleteHandler,
+
+    /// Searches for pigs baesd on the given &str query
+    pub fetch: PigFetchHandler,
+}
+
+impl Default for PigApi {
+    fn default() -> Self {
+        // These must be defined individually or else we run into a "too much recursion" error
         Self {
-            pig_create_receiver: None,
-            pig_update_receiver: None,
-            pig_delete_receiver: None,
-            pig_fetch_receiver: None,
+            create: PigCreateHandler::default(),
+            update: PigUpdateHandler::default(),
+            delete: PigDeleteHandler::default(),
+            fetch: PigFetchHandler::default(),
         }
     }
 }
 
-// TODO we could probably have a struct to actually implement each request type, a lot of the code is duplicated
-// TODO use std::error::Error instead of strings for responses
-impl ClientDataHandler {
-    // PIG API
-    pub fn request_pig_create(&mut self, name: &str) {
-        // Encode special characters https://rustjobs.dev/blog/how-to-url-encode-strings-in-rust/
-        let (tx, rx) = oneshot::channel();
-        self.pig_create_receiver = Some(rx);
+endpoint!(PigCreateHandler, &str, Pig, |input| {
+    let (tx, rx) = oneshot::channel();
 
-        // Submit the request to the server
-        let req = Request::post(yuri!(PIG_API_ROOT, "create" ;? query!("name" = name)), vec![]);
-        fetch_and_send(req, tx, |res| {
-            // Convert the response to a pig object
-            let json = res.json::<Pig>();
+    // Submit the request to the server
+    let req = Request {
+        credentials: Credentials::SameOrigin,
+        ..Request::post(yuri!(PIG_API_ROOT, "create" ;? query!("name" = input)), vec![])
+    };
+    fetch_and_send(req, tx, |res| {
+        // Convert the response to a pig object
+        let json = res.json::<Pig>();
 
-            // Check if the JSON parsed successfully, both times we don't
-            // care whether the message is received by rx
-            match json {
-                Ok(pig) => Ok(pig),
-                Err(err) => Err(format!("Unable to parse JSON: {}", err.to_string())),
-            }
-        });
-    }
-
-    pub fn resolve_pig_create(&mut self) -> Status<Pig> {
-        let status = check_response_status(&mut self.pig_create_receiver);
-
-        // Drop the receiver if we have a response
-        if !matches!(&status, Pending) {
-            self.pig_create_receiver = None;
+        // Check if the JSON parsed successfully, both times we don't
+        // care whether the message is received by rx
+        match json {
+            Ok(pig) => Ok(pig),
+            Err(err) => Err(format!("Unable to parse JSON: {}", err.to_string())),
         }
+    });
 
-        status
-    }
+    rx
+});
 
-    pub fn discard_pig_create(&mut self) {
-        self.pig_create_receiver = None;
-    }
+endpoint!(PigUpdateHandler, &Pig, Response, |input| {
+    let (tx, rx) = oneshot::channel();
 
-    pub fn request_pig_update(&mut self, pig: &Pig) {
-        let (tx, rx) = oneshot::channel();
-        self.pig_update_receiver = Some(rx);
+    // If the JSON POST was generated successfully
+    let req = Request::json(yuri!(PIG_API_ROOT, "update"), input);
+    if let Ok(req) = req {
+        // Convert the request type from POST to PUT
+        let req = Request { method: "PUT".to_owned(), credentials: Credentials::SameOrigin, ..req };
 
-        // If the JSON POST was generated successfully
-        let req = Request::json(yuri!(PIG_API_ROOT, "update"), pig);
-        if let Ok(req) = req {
-            // Convert the request type from POST to PUT
-            let req = Request { method: "PUT".to_owned(), ..req };
-
-            // Now actually submit the request, then relay the result to the channel sender
-            // No fancy processing needed for this one
-            fetch_and_send(req, tx, |res| Ok(res));
-        } else {
-            tx.send(Err(format!("Unable to generate JSON: {}", req.unwrap_err().to_string()))).unwrap_or_default()
-        }
-    }
-
-    pub fn resolve_pig_update(&mut self) -> Status<Response> {
-        let status = check_response_status(&mut self.pig_update_receiver);
-
-        // Drop the receiver if we have a response
-        if !matches!(&status, Pending) {
-            self.pig_update_receiver = None;
-        }
-
-        status
-    }
-
-    pub fn discard_pig_update(&mut self) {
-        self.pig_update_receiver = None;
-    }
-
-    pub fn request_pig_delete(&mut self, id: Uuid) {
-        let (tx, rx) = oneshot::channel();
-        self.pig_delete_receiver = Some(rx);
-
-        // Convert method type to DELETE, ::get method is just a good starter
-        let req = Request {
-            method: "DELETE".to_owned(),
-            ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = id.to_string().as_str())))
-        };
-
-        // Submit the request, no fancy processing needed for this one
+        // Now actually submit the request, then relay the result to the channel sender
+        // No fancy processing needed for this one
         fetch_and_send(req, tx, |res| Ok(res));
+    } else {
+        tx.send(Err(format!("Unable to generate JSON: {}", req.unwrap_err().to_string()))).unwrap_or_default()
     }
 
-    pub fn resolve_pig_delete(&mut self) -> Status<Response> {
-        let status = check_response_status(&mut self.pig_delete_receiver);
+    rx
+});
 
-        // Drop the receiver if we have a response
-        if !matches!(&status, Pending) {
-            self.pig_delete_receiver = None;
+endpoint!(PigDeleteHandler, Uuid, Response, |input: Uuid| {
+    let (tx, rx) = oneshot::channel();
+
+    // Convert method type to DELETE, ::get method is just a good starter
+    let req = Request {
+        method: "DELETE".to_owned(),
+        credentials: Credentials::SameOrigin,
+        ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = input.to_string().as_str())))
+    };
+
+    // Submit the request, no fancy processing needed for this one
+    fetch_and_send(req, tx, |res| Ok(res));
+
+    rx
+});
+
+endpoint!(PigFetchHandler, &str, Vec<Pig>, |input: &str| {
+    let (tx, rx) = oneshot::channel();
+
+    // Submit the request to the server
+    let params = PigFetchQuery { name: Some(input.to_owned()), ..Default::default() };
+    let req = Request { credentials: Credentials::SameOrigin, ..Request::get(params.to_yuri()) };
+    fetch_and_send(req, tx, |res| {
+        // Convert the response to a pig object
+        let json = res.json::<Vec<Pig>>();
+
+        // Check if the JSON parsed successfully, both times we don't
+        // care whether the message is received by rx
+        match json {
+            Ok(pigs) => Ok(pigs),
+            Err(err) => Err(format!("Unable to parse JSON: {}", err.to_string())),
         }
+    });
 
-        status
-    }
-
-    pub fn discard_pig_delete(&mut self) {
-        self.pig_delete_receiver = None;
-    }
-
-    pub fn request_pig_fetch(&mut self, query: &str) {
-        let (tx, rx) = oneshot::channel();
-        self.pig_fetch_receiver = Some(rx);
-
-        // Submit the request to the server
-        let params = PigFetchQuery { name: Some(query.to_owned()), ..Default::default() };
-        let req = Request::get(params.to_yuri());
-        fetch_and_send(req, tx, |res| {
-            // Convert the response to a pig object
-            let json = res.json::<Vec<Pig>>();
-
-            // Check if the JSON parsed successfully, both times we don't
-            // care whether the message is received by rx
-            match json {
-                Ok(pigs) => Ok(pigs),
-                Err(err) => Err(format!("Unable to parse JSON: {}", err.to_string())),
-            }
-        });
-    }
-
-    pub fn resolve_pig_fetch(&mut self) -> Status<Vec<Pig>> {
-        let status = check_response_status(&mut self.pig_fetch_receiver);
-
-        // Drop the receiver if we have a response
-        if !matches!(&status, Pending) {
-            self.pig_fetch_receiver = None;
-        }
-
-        status
-    }
-
-    pub fn discard_pig_fetch(&mut self) {
-        self.pig_fetch_receiver = None;
-    }
-}
+    rx
+});
 
 fn fetch_and_send<T: 'static + Send>(
     req: Request,

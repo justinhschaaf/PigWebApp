@@ -15,6 +15,7 @@ uuid.workspace = true
 # server depends
 diesel = { workspace = true, optional = true }
 rocket = { workspace = true, optional = true }
+rocket_oauth2 = { workspace = true, optional = true }
 
 [features]
-server = ["dep:diesel", "dep:rocket"]
+server = ["dep:diesel", "dep:rocket", "dep:rocket_oauth2"]

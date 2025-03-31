@@ -1,19 +1,20 @@
 use crate::app::Page::Pigs;
-use crate::data::{ClientDataHandler, Status};
+use crate::data::{AuthApi, PigApi, Status};
 use crate::modal::Modal;
-use chrono::{DateTime, Local};
+use chrono::Local;
 use egui::epaint::text::{FontInsert, InsertFontFamily};
 use egui::text::LayoutJob;
 use egui::{
-    menu, Align, Button, CentralPanel, Context, FontData, FontSelection, Label, Layout, ScrollArea, SelectableLabel,
-    Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
+    menu, Align, Button, CentralPanel, Context, FontData, FontSelection, Label, Layout, OpenUrl, ScrollArea,
+    SelectableLabel, Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
 };
 use egui_colors::tokens::ThemeColor;
 use egui_colors::Colorix;
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
 use log::error;
-use pigweb_common::Pig;
+use pigweb_common::pigs::Pig;
+use pigweb_common::{yuri, AUTH_API_ROOT};
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 const THEME_PRIMARY: ThemeColor = ThemeColor::Gray;
@@ -55,6 +56,9 @@ enum DirtyAction {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct PigWebClient {
+    #[serde(skip)]
+    authenticated: bool,
+
     // The currently open page, see above for options
     page: Page,
 
@@ -62,9 +66,12 @@ pub struct PigWebClient {
     #[serde(skip)]
     colorix: Colorix,
 
+    #[serde(skip)]
+    auth_api: AuthApi,
+
     // Handles sending and receiving API data
     #[serde(skip)]
-    data: ClientDataHandler,
+    pig_api: PigApi,
 
     // The current search query
     query: String,
@@ -103,9 +110,11 @@ pub struct PigWebClient {
 impl Default for PigWebClient {
     fn default() -> Self {
         Self {
+            authenticated: false,
             page: Pigs,
             colorix: Colorix::default(), // Properly initialized in new()
-            data: ClientDataHandler::default(),
+            auth_api: AuthApi::default(),
+            pig_api: PigApi::default(),
             query: String::default(),
             query_results: None,
             selection: None,
@@ -162,6 +171,9 @@ impl PigWebClient {
             res = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
         }
 
+        // Check whether the user is logged in
+        res.auth_api.is_authenticated.request(false); // this arg doesn't matter
+
         // Initialize pig list
         res.do_query();
 
@@ -170,7 +182,13 @@ impl PigWebClient {
     }
 
     fn process_promises(&mut self) {
-        match self.data.resolve_pig_create() {
+        match self.auth_api.is_authenticated.resolve() {
+            Status::Received(authenticated) => self.authenticated = authenticated,
+            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Pending => {}
+        }
+
+        match self.pig_api.create.resolve() {
             Status::Received(pig) => {
                 self.dirty = false;
                 self.selection = Some(pig);
@@ -180,7 +198,7 @@ impl PigWebClient {
             Status::Pending => {}
         }
 
-        match self.data.resolve_pig_update() {
+        match self.pig_api.update.resolve() {
             Status::Received(_) => {
                 self.dirty = false;
                 self.do_query(); // Redo the search query so it includes any possible changes
@@ -189,7 +207,7 @@ impl PigWebClient {
             Status::Pending => {}
         }
 
-        match self.data.resolve_pig_delete() {
+        match self.pig_api.delete.resolve() {
             Status::Received(_) => {
                 self.dirty = false;
                 self.selection = None;
@@ -199,7 +217,7 @@ impl PigWebClient {
             Status::Pending => {}
         }
 
-        match self.data.resolve_pig_fetch() {
+        match self.pig_api.fetch.resolve() {
             Status::Received(pigs) => self.query_results = Some(pigs),
             Status::Errored(err) => self.warn_generic_error(err.to_owned()),
             Status::Pending => {}
@@ -237,7 +255,7 @@ impl PigWebClient {
 
             // Logout
             if ui.button("⎆").clicked() {
-                todo!("Implement when user accounts are completed.");
+                ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/logout/")));
             }
         });
     }
@@ -330,7 +348,7 @@ impl PigWebClient {
 
                 // TODO set as disabled again when not dirty. we just have to live with this until https://github.com/lucasmerlin/hello_egui/pull/50 is done
                 if flex.add(item().grow(1.0), save_button).clicked() {
-                    self.data.request_pig_update(pig);
+                    self.pig_api.update.request(pig);
                 }
 
                 if flex.add(item().grow(1.0), delete_button).clicked() {
@@ -383,12 +401,10 @@ impl PigWebClient {
                         });
                     });
 
-                    if false {
-                        // disabled until implemented
-                        add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
-                            ui.code("TODO dropdown");
-                        });
-                    }
+                    add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
+                        // TODO actually bother fetching the user data
+                        ui.code(pig.creator.to_string());
+                    });
 
                     add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
                         let create_time = pig.created.and_utc().with_timezone(&Local);
@@ -399,16 +415,29 @@ impl PigWebClient {
     }
 
     fn show_modals(&mut self, ctx: &Context) {
+        if !self.authenticated {
+            let modal = Modal::new("Login")
+                .with_body("You need to login or renew your session to continue.")
+                .cancellable(false)
+                .show_with_extras(ctx, |ui| {
+                    if ui.button("✔ Ok").clicked() {
+                        ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/login/")));
+                    }
+                });
+
+            if modal.should_close() {
+                ctx.open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/login/")));
+            }
+        }
+
         if self.delete_modal {
-            let modal = Modal::new_with_extras(
-                ctx,
-                "delete",
-                "Confirm Deletion",
-                "Are you sure you want to delete this pig? There's no going back after this!",
-                |ui| {
+            let modal = Modal::new("delete")
+                .with_heading("Confirm Deletion")
+                .with_body("Are you sure you want to delete this pig? There's no going back after this!")
+                .show_with_extras(ctx, |ui| {
                     if ui.button("✔ Yes").clicked() {
                         match self.selection.as_ref() {
-                            Some(pig) => self.data.request_pig_delete(pig.id),
+                            Some(pig) => self.pig_api.delete.request(pig.id),
                             None => self.warn_generic_error(
                                 "You tried to delete a pig without having one selected, how the fuck did you manage that?"
                                     .to_owned(),
@@ -416,8 +445,7 @@ impl PigWebClient {
                         }
                         self.delete_modal = false;
                     }
-                },
-            );
+                });
 
             if modal.should_close() {
                 self.delete_modal = false;
@@ -425,18 +453,15 @@ impl PigWebClient {
         }
 
         if self.dirty_modal {
-            let modal = Modal::new_with_extras(
-                ctx,
-                "dirty",
-                "Discard Unsaved Changes",
-                "Are you sure you want to continue and discard your current changes? There's no going back after this!",
-                |ui| {
+            let modal = Modal::new("dirty")
+                .with_heading("Discard Unsaved Changes")
+                .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
+                .show_with_extras(ctx, |ui| {
                     if ui.button("✔ Yes").clicked() {
                         self.do_dirty_action();
                         self.dirty_modal = false;
                     }
-                },
-            );
+                });
 
             if modal.should_close() {
                 self.dirty_modal = false;
@@ -444,14 +469,11 @@ impl PigWebClient {
         }
 
         if self.error_modal {
-            if Modal::new(
-                ctx,
-                "Error",
-                "Error",
-                self.error_modal_msg.as_ref().unwrap_or(&mut "How did we get here?".to_owned()),
-            )
-            .should_close()
-            {
+            let modal = Modal::new("Error")
+                .with_body(self.error_modal_msg.as_ref().unwrap_or(&mut "How did we get here?".to_owned()))
+                .show(ctx);
+
+            if modal.should_close() {
                 self.error_modal = false;
             }
         }
@@ -481,12 +503,12 @@ impl PigWebClient {
     /// the list of current results
     fn do_query(&mut self) {
         self.query_results = None;
-        self.data.request_pig_fetch(&self.query);
+        self.pig_api.fetch.request(&self.query);
     }
 
     fn do_dirty_action(&mut self) {
         match &self.dirty_modal_action {
-            DirtyAction::Create(name) => self.data.request_pig_create(name),
+            DirtyAction::Create(name) => self.pig_api.create.request(name),
             DirtyAction::Select(pig) => self.selection = Some(pig.to_owned()),
             DirtyAction::None => {}
         }
@@ -498,6 +520,9 @@ impl PigWebClient {
 impl eframe::App for PigWebClient {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        // TODO redirect the user if they are not authenticated
+        // ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/login/oidc")));
+
         // Handle all the incoming data
         self.process_promises();
 
@@ -510,15 +535,17 @@ impl eframe::App for PigWebClient {
             });
         });
 
-        SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
-            self.populate_sidebar(ui);
-        });
-
-        CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                self.populate_center(ui);
+        if self.authenticated {
+            SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
+                self.populate_sidebar(ui);
             });
-        });
+
+            CentralPanel::default().show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    self.populate_center(ui);
+                });
+            });
+        }
 
         self.show_modals(ctx);
     }

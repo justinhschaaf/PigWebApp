@@ -7,9 +7,12 @@ readme.workspace = true
 
 [dependencies]
 pigweb_common = { path = "../common", features = ["server"] }
+chrono.workspace = true
 diesel.workspace = true
 diesel_full_text_search.workspace = true
 diesel_migrations.workspace = true
+jsonwebtoken.workspace = true
 rocket.workspace = true
+rocket_oauth2.workspace = true
 serde.workspace = true
 uuid.workspace = true

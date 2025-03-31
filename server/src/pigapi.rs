@@ -1,6 +1,8 @@
+use crate::auth::AuthenticatedUser;
 use diesel::{ExpressionMethods, PgConnection, PgTextExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use diesel_full_text_search::{plainto_tsquery, to_tsvector, TsVectorExtensions};
-use pigweb_common::{schema, Pig, PigFetchQuery};
+use pigweb_common::pigs::{Pig, PigFetchQuery};
+use pigweb_common::schema;
 use rocket::http::Status;
 use rocket::response::status::Created;
 use rocket::serde::json::Json;
@@ -16,13 +18,14 @@ pub fn get_pig_api_routes() -> Vec<Route> {
 
 #[post("/create?<name>")]
 async fn api_pig_create(
+    auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     name: &str,
 ) -> Result<Created<Json<Pig>>, (Status, &'static str)> {
     // TODO deduplicate uuids and names
 
     // Create the new pig
-    let pig = Pig::create(name);
+    let pig = Pig::new(name, auth_user.user.id.as_ref());
 
     // Save it to the DB
     let mut db_connection = db_connection.lock().unwrap();
@@ -40,6 +43,7 @@ async fn api_pig_create(
 
 #[put("/update", data = "<pig>")]
 async fn api_pig_update(
+    _auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     pig: Json<Pig>,
 ) -> Result<Json<Pig>, (Status, &'static str)> {
@@ -59,7 +63,11 @@ async fn api_pig_update(
 }
 
 #[delete("/delete?<id>")]
-async fn api_pig_delete(db_connection: &State<Mutex<PgConnection>>, id: &str) -> (Status, &'static str) {
+async fn api_pig_delete(
+    _auth_user: AuthenticatedUser,
+    db_connection: &State<Mutex<PgConnection>>,
+    id: &str,
+) -> (Status, &'static str) {
     let uuid = match Uuid::from_str(id) {
         Ok(i) => i,
         Err(_) => return (Status::BadRequest, "Invalid UUID input"),
@@ -79,6 +87,7 @@ async fn api_pig_delete(db_connection: &State<Mutex<PgConnection>>, id: &str) ->
 
 #[get("/fetch?<query..>")]
 async fn api_pig_fetch(
+    _auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     query: PigFetchQuery,
 ) -> Result<Json<Vec<Pig>>, (Status, &'static str)> {

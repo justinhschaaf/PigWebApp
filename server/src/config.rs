@@ -1,16 +1,20 @@
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+
 use rocket::figment::providers::{Env, Format, Serialized, Toml};
 use rocket::figment::Figment;
-use serde::{Deserialize, Serialize};
+use rocket_oauth2::{OAuthConfig, StaticProvider};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub client_path: String,
-    pub database: Database,
+    pub database: DatabaseConfig,
+    pub oidc: Option<OpenIDConfig>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { client_path: "dist".to_owned(), database: Default::default() }
+        Config { client_path: "dist".to_owned(), database: Default::default(), oidc: None }
     }
 }
 
@@ -36,7 +40,7 @@ impl Config {
 
 // https://www.postgresql.org/docs/9.4/libpq-connect.html#LIBPQ-CONNSTRING
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Database {
+pub struct DatabaseConfig {
     pub uri: Option<String>,
     pub host: Option<String>,
     pub port: Option<u16>,
@@ -45,9 +49,9 @@ pub struct Database {
     pub password: Option<String>,
 }
 
-impl Default for Database {
+impl Default for DatabaseConfig {
     fn default() -> Self {
-        Database {
+        DatabaseConfig {
             uri: None,
             host: Some("localhost".to_owned()),
             port: Some(5432),
@@ -58,7 +62,7 @@ impl Default for Database {
     }
 }
 
-impl Database {
+impl DatabaseConfig {
     pub fn to_pg_connection_string(&self) -> String {
         if let Some(uri) = self.uri.to_owned() {
             uri
@@ -87,5 +91,30 @@ impl Database {
 
             res
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OpenIDConfig {
+    pub auth_uri: String,
+    pub token_uri: String,
+    pub redirect_uri: Option<String>,
+    pub logout_uri: Option<String>,
+    pub client_id: String,
+    pub client_secret: String,
+    pub scopes: Vec<String>,
+}
+
+impl OpenIDConfig {
+    pub fn to_oauth_config(&self) -> OAuthConfig {
+        OAuthConfig::new(
+            StaticProvider {
+                auth_uri: Cow::from(self.auth_uri.to_owned()),
+                token_uri: Cow::from(self.token_uri.to_owned()),
+            },
+            self.client_id.to_owned(),
+            self.client_secret.to_owned(),
+            self.redirect_uri.to_owned(),
+        )
     }
 }

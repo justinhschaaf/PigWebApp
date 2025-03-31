@@ -112,6 +112,7 @@
                     tmux
 
                     # misc. libraries
+                    gcc
                     openssl
 
                     # GUI libs

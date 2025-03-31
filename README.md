@@ -17,7 +17,7 @@ server-side, as Pocketbase doesn't support serverside functions.
 - [x] **[CRUD](https://en.wikipedia.org/wiki/Create%2C_read%2C_update_and_delete) pig names.**
 - [ ] **[RBAC](https://en.wikipedia.org/wiki/Role-based_access_control) to allow different levels of access.** You
   should also be able to configure groups for assigning these roles to users.
-- [ ] **[OIDC](https://en.wikipedia.org/wiki/OpenID#OpenID_Connect_(OIDC)) authentication, the app should not manage
+- [x] **[OIDC](https://en.wikipedia.org/wiki/OpenID#OpenID_Connect_(OIDC)) authentication, the app should not manage
   authentication.** It should, however, be able to read user groups from OIDC user info and manage users' groups through
   it.
 - [x] **Fully declarative configuration.** Ideally, this is possible through NixOS modules that you can also use to
