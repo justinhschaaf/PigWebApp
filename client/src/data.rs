@@ -87,7 +87,13 @@ pub struct PigApi {
 
 impl Default for PigApi {
     fn default() -> Self {
-        Self { ..Default::default() }
+        // These must be defined individually or else we run into a "too much recursion" error
+        Self {
+            create: PigCreateHandler::default(),
+            update: PigUpdateHandler::default(),
+            delete: PigDeleteHandler::default(),
+            fetch: PigFetchHandler::default(),
+        }
     }
 }
 
@@ -149,7 +155,7 @@ endpoint!(PigDeleteHandler, Uuid, Response, |input: Uuid| {
     rx
 });
 
-endpoint!(PigFetchHandler, &str, Vec<Pig>, |input| {
+endpoint!(PigFetchHandler, &str, Vec<Pig>, |input: &str| {
     let (tx, rx) = oneshot::channel();
 
     // Submit the request to the server
