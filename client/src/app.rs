@@ -1,5 +1,5 @@
 use crate::app::Page::Pigs;
-use crate::data::{ClientDataHandler, Status};
+use crate::data::{PigApi, Status};
 use crate::modal::Modal;
 use chrono::{DateTime, Local};
 use egui::epaint::text::{FontInsert, InsertFontFamily};
@@ -65,7 +65,7 @@ pub struct PigWebClient {
 
     // Handles sending and receiving API data
     #[serde(skip)]
-    data: ClientDataHandler,
+    pig_api: PigApi,
 
     // The current search query
     query: String,
@@ -106,7 +106,7 @@ impl Default for PigWebClient {
         Self {
             page: Pigs,
             colorix: Colorix::default(), // Properly initialized in new()
-            data: ClientDataHandler::default(),
+            pig_api: PigApi::default(),
             query: String::default(),
             query_results: None,
             selection: None,
@@ -171,7 +171,7 @@ impl PigWebClient {
     }
 
     fn process_promises(&mut self) {
-        match self.data.resolve_pig_create() {
+        match self.pig_api.create.resolve() {
             Status::Received(pig) => {
                 self.dirty = false;
                 self.selection = Some(pig);
@@ -181,7 +181,7 @@ impl PigWebClient {
             Status::Pending => {}
         }
 
-        match self.data.resolve_pig_update() {
+        match self.pig_api.update.resolve() {
             Status::Received(_) => {
                 self.dirty = false;
                 self.do_query(); // Redo the search query so it includes any possible changes
@@ -190,7 +190,7 @@ impl PigWebClient {
             Status::Pending => {}
         }
 
-        match self.data.resolve_pig_delete() {
+        match self.pig_api.delete.resolve() {
             Status::Received(_) => {
                 self.dirty = false;
                 self.selection = None;
@@ -200,7 +200,7 @@ impl PigWebClient {
             Status::Pending => {}
         }
 
-        match self.data.resolve_pig_fetch() {
+        match self.pig_api.fetch.resolve() {
             Status::Received(pigs) => self.query_results = Some(pigs),
             Status::Errored(err) => self.warn_generic_error(err.to_owned()),
             Status::Pending => {}
@@ -331,7 +331,7 @@ impl PigWebClient {
 
                 // TODO set as disabled again when not dirty. we just have to live with this until https://github.com/lucasmerlin/hello_egui/pull/50 is done
                 if flex.add(item().grow(1.0), save_button).clicked() {
-                    self.data.request_pig_update(pig);
+                    self.pig_api.update.request(pig);
                 }
 
                 if flex.add(item().grow(1.0), delete_button).clicked() {
@@ -471,12 +471,12 @@ impl PigWebClient {
     /// the list of current results
     fn do_query(&mut self) {
         self.query_results = None;
-        self.data.request_pig_fetch(&self.query);
+        self.pig_api.fetch.request(&self.query);
     }
 
     fn do_dirty_action(&mut self) {
         match &self.dirty_modal_action {
-            DirtyAction::Create(name) => self.data.request_pig_create(name),
+            DirtyAction::Create(name) => self.pig_api.create.request(name),
             DirtyAction::Select(pig) => self.selection = Some(pig.to_owned()),
             DirtyAction::None => {}
         }
