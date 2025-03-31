@@ -1,7 +1,7 @@
 use crate::app::Page::Pigs;
-use crate::data::{PigApi, Status};
+use crate::data::{AuthApi, PigApi, Status};
 use crate::modal::Modal;
-use chrono::{DateTime, Local};
+use chrono::Local;
 use egui::epaint::text::{FontInsert, InsertFontFamily};
 use egui::text::LayoutJob;
 use egui::{
@@ -56,12 +56,18 @@ enum DirtyAction {
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct PigWebClient {
+    #[serde(skip)]
+    authenticated: bool,
+
     // The currently open page, see above for options
     page: Page,
 
     // Theming
     #[serde(skip)]
     colorix: Colorix,
+
+    #[serde(skip)]
+    auth_api: AuthApi,
 
     // Handles sending and receiving API data
     #[serde(skip)]
@@ -104,8 +110,10 @@ pub struct PigWebClient {
 impl Default for PigWebClient {
     fn default() -> Self {
         Self {
+            authenticated: false,
             page: Pigs,
             colorix: Colorix::default(), // Properly initialized in new()
+            auth_api: AuthApi::default(),
             pig_api: PigApi::default(),
             query: String::default(),
             query_results: None,
@@ -163,6 +171,9 @@ impl PigWebClient {
             res = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
         }
 
+        // Check whether the user is logged in
+        res.auth_api.is_authenticated.request(false); // this arg doesn't matter
+
         // Initialize pig list
         res.do_query();
 
@@ -171,6 +182,12 @@ impl PigWebClient {
     }
 
     fn process_promises(&mut self) {
+        match self.auth_api.is_authenticated.resolve() {
+            Status::Received(authenticated) => self.authenticated = authenticated,
+            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Pending => {}
+        }
+
         match self.pig_api.create.resolve() {
             Status::Received(pig) => {
                 self.dirty = false;
@@ -238,7 +255,7 @@ impl PigWebClient {
 
             // Logout
             if ui.button("⎆").clicked() {
-                ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/logout/oidc")));
+                ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/logout/")));
             }
         });
     }
@@ -398,6 +415,21 @@ impl PigWebClient {
     }
 
     fn show_modals(&mut self, ctx: &Context) {
+        if !self.authenticated {
+            let modal = Modal::new("Login")
+                .with_body("You need to login or renew your session to continue.")
+                .cancellable(false)
+                .show_with_extras(ctx, |ui| {
+                    if ui.button("✔ Ok").clicked() {
+                        ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/login/")));
+                    }
+                });
+
+            if modal.should_close() {
+                ctx.open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/login/")));
+            }
+        }
+
         if self.delete_modal {
             let modal = Modal::new("delete")
                 .with_heading("Confirm Deletion")
@@ -503,15 +535,17 @@ impl eframe::App for PigWebClient {
             });
         });
 
-        SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
-            self.populate_sidebar(ui);
-        });
-
-        CentralPanel::default().show(ctx, |ui| {
-            ui.vertical_centered(|ui| {
-                self.populate_center(ui);
+        if self.authenticated {
+            SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
+                self.populate_sidebar(ui);
             });
-        });
+
+            CentralPanel::default().show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    self.populate_center(ui);
+                });
+            });
+        }
 
         self.show_modals(ctx);
     }

@@ -2,7 +2,7 @@ use crate::data::Status::{Errored, Pending, Received};
 use ehttp::{Credentials, Request, Response};
 use log::debug;
 use pigweb_common::pigs::{Pig, PigFetchQuery};
-use pigweb_common::{query, yuri, PIG_API_ROOT};
+use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT};
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;
@@ -22,6 +22,7 @@ pub enum Status<T> {
     Received(T),
 
     /// There was a problem taking care of this
+    // TODO use std::error::Error instead of strings for responses
     Errored(String),
 
     /// We haven't received a response from the Sender for whatever reason
@@ -78,10 +79,47 @@ macro_rules! endpoint {
     };
 }
 
+pub struct AuthApi {
+    pub is_authenticated: AuthCheckHandler,
+}
+
+impl Default for AuthApi {
+    fn default() -> Self {
+        Self { is_authenticated: AuthCheckHandler::default() }
+    }
+}
+
+endpoint!(AuthCheckHandler, bool, bool, |_ignored: bool| {
+    let (tx, rx) = oneshot::channel();
+
+    // Submit the request to the server
+    let req = Request { credentials: Credentials::SameOrigin, ..Request::get(yuri!(AUTH_API_ROOT)) };
+
+    fetch_and_send(req, tx, |res| {
+        if res.ok {
+            return Ok(true);
+        } else if res.status == 401 {
+            return Ok(false);
+        }
+
+        Err(res.status_text.to_owned())
+    });
+
+    rx
+});
+
+/// Represents the API for working with pigs
 pub struct PigApi {
+    /// Create a new pig given the name as a &str
     pub create: PigCreateHandler,
+
+    /// Update a pig given the updated Pig struct
     pub update: PigUpdateHandler,
+
+    /// Delete a pig given the Uuid
     pub delete: PigDeleteHandler,
+
+    /// Searches for pigs baesd on the given &str query
     pub fetch: PigFetchHandler,
 }
 
@@ -175,8 +213,6 @@ endpoint!(PigFetchHandler, &str, Vec<Pig>, |input: &str| {
 
     rx
 });
-
-// TODO use std::error::Error instead of strings for responses
 
 fn fetch_and_send<T: 'static + Send>(
     req: Request,
