@@ -399,15 +399,13 @@ impl PigWebClient {
 
     fn show_modals(&mut self, ctx: &Context) {
         if self.delete_modal {
-            let modal = Modal::new_with_extras(
-                ctx,
-                "delete",
-                "Confirm Deletion",
-                "Are you sure you want to delete this pig? There's no going back after this!",
-                |ui| {
+            let modal = Modal::new("delete")
+                .with_heading("Confirm Deletion")
+                .with_body("Are you sure you want to delete this pig? There's no going back after this!")
+                .show_with_extras(ctx, |ui| {
                     if ui.button("✔ Yes").clicked() {
                         match self.selection.as_ref() {
-                            Some(pig) => self.data.request_pig_delete(pig.id),
+                            Some(pig) => self.pig_api.delete.request(pig.id),
                             None => self.warn_generic_error(
                                 "You tried to delete a pig without having one selected, how the fuck did you manage that?"
                                     .to_owned(),
@@ -415,8 +413,7 @@ impl PigWebClient {
                         }
                         self.delete_modal = false;
                     }
-                },
-            );
+                });
 
             if modal.should_close() {
                 self.delete_modal = false;
@@ -424,18 +421,15 @@ impl PigWebClient {
         }
 
         if self.dirty_modal {
-            let modal = Modal::new_with_extras(
-                ctx,
-                "dirty",
-                "Discard Unsaved Changes",
-                "Are you sure you want to continue and discard your current changes? There's no going back after this!",
-                |ui| {
+            let modal = Modal::new("dirty")
+                .with_heading("Discard Unsaved Changes")
+                .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
+                .show_with_extras(ctx, |ui| {
                     if ui.button("✔ Yes").clicked() {
                         self.do_dirty_action();
                         self.dirty_modal = false;
                     }
-                },
-            );
+                });
 
             if modal.should_close() {
                 self.dirty_modal = false;
@@ -443,14 +437,11 @@ impl PigWebClient {
         }
 
         if self.error_modal {
-            if Modal::new(
-                ctx,
-                "Error",
-                "Error",
-                self.error_modal_msg.as_ref().unwrap_or(&mut "How did we get here?".to_owned()),
-            )
-            .should_close()
-            {
+            let modal = Modal::new("Error")
+                .with_body(self.error_modal_msg.as_ref().unwrap_or(&mut "How did we get here?".to_owned()))
+                .show(ctx);
+
+            if modal.should_close() {
                 self.error_modal = false;
             }
         }
