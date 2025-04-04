@@ -1,5 +1,5 @@
 use crate::app::Page::Pigs;
-use crate::data::{AuthApi, PigApi, Status};
+use crate::data::{ApiError, AuthApi, PigApi, Status};
 use crate::modal::Modal;
 use chrono::Local;
 use egui::epaint::text::{FontInsert, InsertFontFamily};
@@ -12,7 +12,6 @@ use egui_colors::tokens::ThemeColor;
 use egui_colors::Colorix;
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
-use log::error;
 use pigweb_common::pigs::Pig;
 use pigweb_common::{yuri, AUTH_API_ROOT};
 
@@ -104,7 +103,7 @@ pub struct PigWebClient {
 
     // The message to display on the error modal
     #[serde(skip)]
-    error_modal_msg: Option<String>,
+    error_modal_err: Option<ApiError>,
 }
 
 impl Default for PigWebClient {
@@ -123,7 +122,7 @@ impl Default for PigWebClient {
             dirty_modal: false,
             dirty_modal_action: DirtyAction::None,
             error_modal: false,
-            error_modal_msg: None,
+            error_modal_err: None,
         }
     }
 }
@@ -184,7 +183,7 @@ impl PigWebClient {
     fn process_promises(&mut self) {
         match self.auth_api.is_authenticated.resolve() {
             Status::Received(authenticated) => self.authenticated = authenticated,
-            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Errored(err) => self.warn_generic_error(err),
             Status::Pending => {}
         }
 
@@ -194,7 +193,13 @@ impl PigWebClient {
                 self.selection = Some(pig);
                 self.do_query(); // Redo the search query so it includes the new pig
             }
-            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Errored(err) => {
+                if err.code == Some(401) {
+                    self.authenticated = false;
+                } else {
+                    self.warn_generic_error(err);
+                }
+            }
             Status::Pending => {}
         }
 
@@ -203,7 +208,13 @@ impl PigWebClient {
                 self.dirty = false;
                 self.do_query(); // Redo the search query so it includes any possible changes
             }
-            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Errored(err) => {
+                if err.code == Some(401) {
+                    self.authenticated = false;
+                } else {
+                    self.warn_generic_error(err);
+                }
+            }
             Status::Pending => {}
         }
 
@@ -213,13 +224,25 @@ impl PigWebClient {
                 self.selection = None;
                 self.do_query(); // Redo the search query to exclude the deleted pig
             }
-            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Errored(err) => {
+                if err.code == Some(401) {
+                    self.authenticated = false;
+                } else {
+                    self.warn_generic_error(err);
+                }
+            }
             Status::Pending => {}
         }
 
         match self.pig_api.fetch.resolve() {
             Status::Received(pigs) => self.query_results = Some(pigs),
-            Status::Errored(err) => self.warn_generic_error(err.to_owned()),
+            Status::Errored(err) => {
+                if err.code == Some(401) {
+                    self.authenticated = false;
+                } else {
+                    self.warn_generic_error(err);
+                }
+            }
             Status::Pending => {}
         }
     }
@@ -439,8 +462,7 @@ impl PigWebClient {
                         match self.selection.as_ref() {
                             Some(pig) => self.pig_api.delete.request(pig.id),
                             None => self.warn_generic_error(
-                                "You tried to delete a pig without having one selected, how the fuck did you manage that?"
-                                    .to_owned(),
+                                ApiError::new("You tried to delete a pig without having one selected, how the fuck did you manage that?".to_owned())
                             ),
                         }
                         self.delete_modal = false;
@@ -469,12 +491,21 @@ impl PigWebClient {
         }
 
         if self.error_modal {
-            let modal = Modal::new("Error")
-                .with_body(self.error_modal_msg.as_ref().unwrap_or(&mut "How did we get here?".to_owned()))
-                .show(ctx);
+            if let Some(err_unwrapped) = self.error_modal_err.as_ref() {
+                let heading = err_unwrapped.reason.as_ref().unwrap_or(&"Error".to_owned()).to_string();
+                let heading_with_code = match err_unwrapped.code {
+                    Some(code) => format!("{:?} {:?}", code, heading),
+                    None => heading,
+                };
 
-            if modal.should_close() {
-                self.error_modal = false;
+                let modal = Modal::new("error")
+                    .with_heading(heading_with_code)
+                    .with_body(err_unwrapped.description.as_str())
+                    .show(ctx);
+
+                if modal.should_close() {
+                    self.error_modal = false;
+                }
             }
         }
     }
@@ -493,10 +524,9 @@ impl PigWebClient {
 
     /// Sets the error modal's message, marks the modal to be shown, and logs
     /// the error
-    fn warn_generic_error(&mut self, msg: String) {
-        error!("{}", msg);
+    fn warn_generic_error(&mut self, err: ApiError) {
         self.error_modal = true;
-        self.error_modal_msg = Some(msg);
+        self.error_modal_err = Some(err);
     }
 
     /// Sends a fetch request for all results of the current query and clears

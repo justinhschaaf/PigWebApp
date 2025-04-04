@@ -21,7 +21,7 @@ async fn api_pig_create(
     auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     name: &str,
-) -> Result<Created<Json<Pig>>, (Status, &'static str)> {
+) -> Result<Created<Json<Pig>>, Status> {
     // TODO deduplicate uuids and names
 
     // Create the new pig
@@ -37,7 +37,7 @@ async fn api_pig_create(
         Ok(Created::new(params.to_yuri()).body(Json(pig)))
     } else {
         error!("Unable to save new pig {:?}: {:?}", pig, sql_res.unwrap_err());
-        Err((Status::InternalServerError, "Error saving new pig"))
+        Err(Status::InternalServerError)
     }
 }
 
@@ -46,7 +46,7 @@ async fn api_pig_update(
     _auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     pig: Json<Pig>,
-) -> Result<Json<Pig>, (Status, &'static str)> {
+) -> Result<Json<Pig>, Status> {
     let pig = pig.into_inner();
     let mut db_connection = db_connection.lock().unwrap();
 
@@ -58,19 +58,18 @@ async fn api_pig_update(
         Ok(Json(sql_res.unwrap()))
     } else {
         error!("Unable to update pig {:?}: {:?}", pig, sql_res.unwrap_err());
-        Err((Status::InternalServerError, "Unable to update pig."))
+        Err(Status::InternalServerError)
     }
 }
 
 #[delete("/delete?<id>")]
-async fn api_pig_delete(
-    _auth_user: AuthenticatedUser,
-    db_connection: &State<Mutex<PgConnection>>,
-    id: &str,
-) -> (Status, &'static str) {
+async fn api_pig_delete(_auth_user: AuthenticatedUser, db_connection: &State<Mutex<PgConnection>>, id: &str) -> Status {
     let uuid = match Uuid::from_str(id) {
         Ok(i) => i,
-        Err(_) => return (Status::BadRequest, "Invalid UUID input"),
+        Err(e) => {
+            error!("Unable to parse UUID: {:?}", e);
+            return Status::BadRequest;
+        }
     };
 
     let mut db_connection = db_connection.lock().unwrap();
@@ -78,10 +77,10 @@ async fn api_pig_delete(
         diesel::delete(schema::pigs::table.filter(schema::pigs::id.eq(uuid))).execute(db_connection.deref_mut());
 
     if sql_res.is_ok() {
-        (Status::NoContent, "Pig successfully deleted")
+        Status::NoContent
     } else {
         error!("Unable to delete pig {:?}: {:?}", id, sql_res.unwrap_err());
-        (Status::InternalServerError, "Unable to delete pig.")
+        Status::InternalServerError
     }
 }
 
@@ -90,7 +89,7 @@ async fn api_pig_fetch(
     _auth_user: AuthenticatedUser,
     db_connection: &State<Mutex<PgConnection>>,
     query: PigFetchQuery,
-) -> Result<Json<Vec<Pig>>, (Status, &'static str)> {
+) -> Result<Json<Vec<Pig>>, Status> {
     let mut ids: Option<Vec<Uuid>> = None;
     let mut limit = PigFetchQuery::get_default_limit();
 
@@ -99,7 +98,10 @@ async fn api_pig_fetch(
     if let Some(ref id) = query.id {
         match id.iter().map(|e| uuid::Uuid::from_str(e.as_str())).collect() {
             Ok(i) => ids = Some(i),
-            Err(_) => return Err((Status::BadRequest, "Invalid UUID input")),
+            Err(e) => {
+                error!("Unable to parse UUID: {:?}", e);
+                return Err(Status::BadRequest);
+            }
         }
     }
 
@@ -140,6 +142,6 @@ async fn api_pig_fetch(
         Ok(Json(sql_res.unwrap()))
     } else {
         error!("Unable to load SQL result for query {:?}: {:?}", query, sql_res.unwrap_err());
-        Err((Status::InternalServerError, "Unable to load requested data."))
+        Err(Status::InternalServerError)
     }
 }

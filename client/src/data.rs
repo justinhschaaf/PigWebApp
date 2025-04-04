@@ -1,8 +1,9 @@
 use crate::data::Status::{Errored, Pending, Received};
-use ehttp::{Credentials, Request, Response};
+use ehttp::{Credentials, Headers, Request, Response};
 use log::debug;
 use pigweb_common::pigs::{Pig, PigFetchQuery};
 use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT};
+use serde::Deserialize;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;
@@ -14,7 +15,7 @@ use uuid::Uuid;
 /// can revert back to None. This means we're not beating a dead horse every
 /// frame and wasting cycles reassigning data in app.rs that hasn't changed AND
 /// we get to free up the memory.
-type MaybeWaiting<T> = Option<Receiver<Result<T, String>>>;
+type MaybeWaiting<T> = Option<Receiver<Result<T, ApiError>>>;
 
 /// Represents the status of a request
 pub enum Status<T> {
@@ -22,11 +23,65 @@ pub enum Status<T> {
     Received(T),
 
     /// There was a problem taking care of this
-    // TODO use std::error::Error instead of strings for responses
-    Errored(String),
+    Errored(ApiError),
 
     /// We haven't received a response from the Sender for whatever reason
     Pending,
+}
+
+/// When Rocket returns a HTTP error as JSON, the actual error data is wrapped
+/// in an "error" tag. This represents the parent tag, with ApiError holding the
+/// data we actually care about.
+#[derive(Debug, Deserialize)]
+struct ApiErrorWrapper {
+    error: ApiError,
+}
+
+/// Represents an error encountered when handling API requests
+#[derive(Debug, Deserialize)]
+pub struct ApiError {
+    /// The HTTP code returned by the server. Not set for local errors (JSON parsing)
+    pub code: Option<u16>,
+
+    /// The "Reason" the error occurred
+    pub reason: Option<String>,
+
+    /// A brief description of what the error is
+    pub description: String,
+}
+
+impl ApiError {
+    pub fn new(description: String) -> Self {
+        Self { code: None, reason: None, description }
+    }
+
+    pub fn with_code(mut self, code: u16) -> Self {
+        self.code = Some(code);
+        self
+    }
+
+    pub fn with_reason(mut self, reason: String) -> Self {
+        self.reason = Some(reason);
+        self
+    }
+}
+
+/// Helper to get ApiErrors from Responses
+impl From<Response> for ApiError {
+    fn from(res: Response) -> Self {
+        res.json::<ApiErrorWrapper>()
+            .map_err(|err| ApiErrorWrapper { error: std::io::Error::from(err).into() })
+            .unwrap_or_else(|e| e)
+            .error
+    }
+}
+
+/// serde_json::Errors can be converted into std::io::Errors. This makes it easy
+/// to convert a JSON parse error into an error we care about.
+impl From<std::io::Error> for ApiError {
+    fn from(err: std::io::Error) -> Self {
+        Self { code: None, reason: Some(err.kind().to_string()), description: err.to_string() }
+    }
 }
 
 /// Defines an individual API endpoint handler. Each handler has three methods:
@@ -93,7 +148,11 @@ endpoint!(AuthCheckHandler, bool, bool, |_ignored: bool| {
     let (tx, rx) = oneshot::channel();
 
     // Submit the request to the server
-    let req = Request { credentials: Credentials::SameOrigin, ..Request::get(yuri!(AUTH_API_ROOT)) };
+    let req = Request {
+        credentials: Credentials::SameOrigin,
+        headers: Headers::new(&[("Accept", "application/json")]),
+        ..Request::get(yuri!(AUTH_API_ROOT))
+    };
 
     fetch_and_send(req, tx, |res| {
         if res.ok {
@@ -102,7 +161,7 @@ endpoint!(AuthCheckHandler, bool, bool, |_ignored: bool| {
             return Ok(false);
         }
 
-        Err(res.status_text.to_owned())
+        Err(res.json::<ApiError>().unwrap_or_else(|err| std::io::Error::from(err).into()))
     });
 
     rx
@@ -141,18 +200,17 @@ endpoint!(PigCreateHandler, &str, Pig, |input| {
     // Submit the request to the server
     let req = Request {
         credentials: Credentials::SameOrigin,
+        headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
         ..Request::post(yuri!(PIG_API_ROOT, "create" ;? query!("name" = input)), vec![])
     };
     fetch_and_send(req, tx, |res| {
-        // Convert the response to a pig object
-        let json = res.json::<Pig>();
-
-        // Check if the JSON parsed successfully, both times we don't
-        // care whether the message is received by rx
-        match json {
-            Ok(pig) => Ok(pig),
-            Err(err) => Err(format!("Unable to parse JSON: {}", err.to_string())),
+        // Handle errors
+        if res.status >= 400 {
+            return Err(res.into());
         }
+
+        // Convert the response to a pig object
+        res.json::<Pig>().map_err(|err| std::io::Error::from(err).into())
     });
 
     rx
@@ -165,13 +223,25 @@ endpoint!(PigUpdateHandler, &Pig, Response, |input| {
     let req = Request::json(yuri!(PIG_API_ROOT, "update"), input);
     if let Ok(req) = req {
         // Convert the request type from POST to PUT
-        let req = Request { method: "PUT".to_owned(), credentials: Credentials::SameOrigin, ..req };
+        let req = Request {
+            method: "PUT".to_owned(),
+            credentials: Credentials::SameOrigin,
+            headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "application/json")]),
+            ..req
+        };
 
         // Now actually submit the request, then relay the result to the channel sender
         // No fancy processing needed for this one
-        fetch_and_send(req, tx, |res| Ok(res));
+        fetch_and_send(req, tx, |res| {
+            // Handle errors
+            if res.status >= 400 {
+                return Err(res.into());
+            }
+
+            Ok(res)
+        });
     } else {
-        tx.send(Err(format!("Unable to generate JSON: {}", req.unwrap_err().to_string()))).unwrap_or_default()
+        tx.send(Err(std::io::Error::from(req.unwrap_err()).into())).unwrap_or_default()
     }
 
     rx
@@ -184,11 +254,19 @@ endpoint!(PigDeleteHandler, Uuid, Response, |input: Uuid| {
     let req = Request {
         method: "DELETE".to_owned(),
         credentials: Credentials::SameOrigin,
+        headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
         ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = input.to_string().as_str())))
     };
 
     // Submit the request, no fancy processing needed for this one
-    fetch_and_send(req, tx, |res| Ok(res));
+    fetch_and_send(req, tx, |res| {
+        // Handle errors
+        if res.status >= 400 {
+            return Err(res.into());
+        }
+
+        Ok(res)
+    });
 
     rx
 });
@@ -198,17 +276,19 @@ endpoint!(PigFetchHandler, &str, Vec<Pig>, |input: &str| {
 
     // Submit the request to the server
     let params = PigFetchQuery { name: Some(input.to_owned()), ..Default::default() };
-    let req = Request { credentials: Credentials::SameOrigin, ..Request::get(params.to_yuri()) };
+    let req = Request {
+        credentials: Credentials::SameOrigin,
+        headers: Headers::new(&[("Accept", "application/json")]),
+        ..Request::get(params.to_yuri())
+    };
     fetch_and_send(req, tx, |res| {
-        // Convert the response to a pig object
-        let json = res.json::<Vec<Pig>>();
-
-        // Check if the JSON parsed successfully, both times we don't
-        // care whether the message is received by rx
-        match json {
-            Ok(pigs) => Ok(pigs),
-            Err(err) => Err(format!("Unable to parse JSON: {}", err.to_string())),
+        // Handle errors
+        if res.status >= 400 {
+            return Err(res.into());
         }
+
+        // Convert the response to a pig object
+        res.json::<Vec<Pig>>().map_err(|err| std::io::Error::from(err).into())
     });
 
     rx
@@ -216,8 +296,8 @@ endpoint!(PigFetchHandler, &str, Vec<Pig>, |input: &str| {
 
 fn fetch_and_send<T: 'static + Send>(
     req: Request,
-    tx: Sender<Result<T, String>>,
-    on_response: impl 'static + Send + FnOnce(Response) -> Result<T, String>,
+    tx: Sender<Result<T, ApiError>>,
+    on_response: impl 'static + Send + FnOnce(Response) -> Result<T, ApiError>,
 ) {
     debug!("Sending request: {req:?}\nBody: {}", String::from_utf8(req.body.clone()).unwrap_or_default());
 
@@ -228,7 +308,7 @@ fn fetch_and_send<T: 'static + Send>(
                 debug!("Received response: {res:?}\nBody: {}", res.text().unwrap_or_default());
                 on_response(res)
             }
-            Err(msg) => Err(format!("No response: {}", msg.to_owned())),
+            Err(msg) => Err(ApiError::new(msg.to_owned()).with_reason("No response".to_owned())),
         })
         .unwrap_or_default()
     });
@@ -239,7 +319,7 @@ fn check_response_status<T>(maybe: &mut MaybeWaiting<T>) -> Status<T> {
         Some(receiver) => match receiver.try_recv() {
             Ok(res) => match res {
                 Ok(t) => Received(t),
-                Err(msg) => Errored(msg),
+                Err(e) => Errored(e),
             },
             Err(_) => Pending,
         },
