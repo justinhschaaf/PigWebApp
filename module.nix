@@ -15,8 +15,9 @@ in {
             default = {};
             description = ''
                 The configuration for the PigWeb server. Also includes options
-                for the underlying Rocket web server, all available optiosn for
-                which you can view at <https://rocket.rs/guide/v0.5/configuration/#overview>
+                for the underlying Rocket web server, which you can view at
+                <https://rocket.rs/guide/v0.5/configuration/#overview>
+
                 Does not support profiles.
             '';
             type = lib.types.submodule {
@@ -35,8 +36,7 @@ in {
                 The environment file as defined in {manpage}`systemd.exec(5)`.
 
                 This is used to prevent secrets from being saved in the global
-                /nix/store. Rocket config options are prefixed by ROCKET_ and
-                PigWeb config options by PIGWEB_
+                /nix/store. All config options should be prefixed by PIGWEB_
             '';
         };
     };
@@ -44,7 +44,7 @@ in {
     config = lib.mkIf cfg.enable {
 
         # Open ports
-        networking.firewall.allowedTCPPorts = lib.optionals cfg.openFirewall [ cfg.rocket.port ];
+        networking.firewall.allowedTCPPorts = lib.optionals cfg.openFirewall [ cfg.config.port ];
 
         # Enable systemd service
         systemd.services."pigweb" = let
