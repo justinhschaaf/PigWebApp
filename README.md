@@ -42,17 +42,14 @@ server-side, as Pocketbase doesn't support serverside functions.
   code in Rust and egui is more important.
 - **[ehttp](https://github.com/emilk/ehttp?tab=readme-ov-file) for HTTP requests to the server.** Keep an eye
   on [emilk/ehttp#18](https://github.com/emilk/ehttp/issues/18)
-  and [emilk/ehttp#62](https://github.com/emilk/ehttp/pull/62) for proper authentication cookie support. Alternatively,
-  look into [reqwest](https://github.com/seanmonstar/reqwest).
+  and [emilk/ehttp#62](https://github.com/emilk/ehttp/pull/62) for proper authentication cookie support.
 
 ### Server Architecture
 
 - **[Rocket](https://rocket.rs/) for handling HTTP requests.**
 - **[Diesel](https://diesel.rs/) for database, [just use Postgres](https://mccue.dev/pages/8-16-24-just-use-postgres) for the backend.** Postgres supports full text search, so we don't need any additional dependencies for it. See [1](https://admcpr.com/postgres-full-text-search-is-better-than-part1/) [2](https://www.crunchydata.com/blog/postgres-full-text-search-a-search-engine-in-a-database) [3](https://neon.tech/postgresql/postgresql-indexes/postgresql-full-text-search) for implementation guidance.
-- **[Possible OAuth2 library](https://docs.rs/oauth2/4.0.0-alpha.1/oauth2/index.html).** Here are some examples as to
-  how OAuth/OIDC might
-  work: [1](https://github.com/csssuf/rocket_oidc) [2](https://docs.rs/rocket_oauth2/latest/rocket_oauth2/) [3](https://www.shuttle.dev/blog/2023/08/30/using-oauth-with-axum)
-- **[Figment](https://docs.rs/figment/0.10.19/figment/) for handling configuration.** This is also what Rocket uses, see [here](https://rocket.rs/guide/v0.5/configuration/) for its configuration. It'll probably be easiest to have one set of config values/config file for the app and another for Rocket so we don't have to reimplement its options.
+- **[rocket_oauth2](https://github.com/jebrosen/rocket_oauth2) for SSO.** Used as the base upon which OIDC is implemented.
+- **[Figment](https://docs.rs/figment/0.10.19/figment/) for handling configuration.** This is also what Rocket uses, see [here](https://rocket.rs/guide/v0.5/configuration/) for its configuration.
 
 ### Implementation Notes
 

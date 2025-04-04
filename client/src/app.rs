@@ -550,9 +550,6 @@ impl PigWebClient {
 impl eframe::App for PigWebClient {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        // TODO redirect the user if they are not authenticated
-        // ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/login/oidc")));
-
         // Handle all the incoming data
         self.process_promises();
 
