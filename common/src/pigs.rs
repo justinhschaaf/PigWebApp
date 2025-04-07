@@ -55,7 +55,6 @@ impl Pig {
 #[cfg_attr(feature = "server", derive(rocket::FromForm))]
 pub struct PigFetchQuery {
     // NOTE: all of these MUST be options or else Rocket won't recognize the query params
-    // TODO add better functions for declaration, e.g. with_id(), with_ids(), with_name()
     pub id: Option<Vec<String>>,
     pub name: Option<String>,
     pub limit: Option<u32>,
@@ -71,6 +70,38 @@ impl Default for PigFetchQuery {
 impl PigFetchQuery {
     pub fn get_default_limit() -> u32 {
         100
+    }
+
+    pub fn with_id(mut self, id: &Uuid) -> Self {
+        self.with_ids(vec![id.to_owned()])
+    }
+
+    pub fn with_id_string(mut self, id: &String) -> Self {
+        self.with_ids_string(vec![id.to_owned()])
+    }
+
+    pub fn with_ids(mut self, ids: Vec<Uuid>) -> Self {
+        self.with_ids_string(ids.iter().map(|e| e.to_string()).collect())
+    }
+
+    pub fn with_ids_string(mut self, ids: Vec<String>) -> Self {
+        self.id = Some(ids);
+        self
+    }
+
+    pub fn with_name(mut self, name: &String) -> Self {
+        self.name = Some(name.to_owned());
+        self
+    }
+
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
     }
 
     pub fn to_yuri(&self) -> String {
