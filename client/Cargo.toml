@@ -12,6 +12,7 @@ egui.workspace = true
 egui_colors.workspace = true
 egui_extras.workspace = true
 egui_flex.workspace = true
+egui_router.workspace = true
 eframe.workspace = true
 ehttp.workspace = true
 form_urlencoded.workspace = true

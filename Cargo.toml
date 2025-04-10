@@ -13,17 +13,17 @@ readme = "README.md"
 
 # shared dependencies
 [workspace.dependencies]
-chrono = { version = "0.4.39", features = ["serde"] }
+chrono = { version = "0.4.40", features = ["serde"] }
 form_urlencoded = "1.2.1"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_url_params = "0.2.1"
-tokio = { version = "1.43.0", features = ["sync"] }
-uuid = { version = "1.11.0", features = ["v4", "js", "serde"] }
+tokio = { version = "1.44.0", features = ["sync"] }
+uuid = { version = "1.16.0", features = ["v4", "js", "serde"] }
 
 # server dependencies
 # as much as i'd like to use diesel-async, the docs are too sparse and the autocomplete too shitty to make it viable rn
-diesel = { version = "2.2.7", features = ["chrono", "postgres", "serde_json", "uuid"] }
+diesel = { version = "2.2.9", features = ["chrono", "postgres", "serde_json", "uuid"] }
 diesel_full_text_search = "2.2.0"
 diesel_migrations = "2.2.0"
 jsonwebtoken = "9.3.1"
@@ -31,11 +31,12 @@ rocket = { version = "0.5.1", features = ["json", "secrets"] }
 rocket_oauth2 = "0.5.0"
 
 # client dependencies
-egui = "0.31.0"
-egui_colors = "0.7.0"
-egui_extras = { version = "0.31.0", default-features = false, features = ["serde"] }
+egui = "0.31.1"
+egui_colors = "0.8.0"
+egui_extras = { version = "0.31.1", default-features = false, features = ["serde"] }
 egui_flex = "0.3.0"
-eframe = { version = "0.31.0", default-features = false, features = [
+egui_router = "0.4.0"
+eframe = { version = "0.31.1", default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.
     "glow", # Use the glow rendering backend. Alternative: "wgpu".
     "persistence", # Enable restoring app state when restarting the app.
