@@ -72,15 +72,15 @@ impl PigFetchQuery {
         100
     }
 
-    pub fn with_id(mut self, id: &Uuid) -> Self {
+    pub fn with_id(self, id: &Uuid) -> Self {
         self.with_ids(vec![id.to_owned()])
     }
 
-    pub fn with_id_string(mut self, id: &String) -> Self {
+    pub fn with_id_string(self, id: &String) -> Self {
         self.with_ids_string(vec![id.to_owned()])
     }
 
-    pub fn with_ids(mut self, ids: Vec<Uuid>) -> Self {
+    pub fn with_ids(self, ids: Vec<Uuid>) -> Self {
         self.with_ids_string(ids.iter().map(|e| e.to_string()).collect())
     }
 
