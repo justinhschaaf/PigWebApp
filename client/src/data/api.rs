@@ -1,9 +1,8 @@
-use crate::data::Status::{Errored, Pending, Received};
 use ehttp::{Credentials, Headers, Request, Response};
 use log::debug;
 use pigweb_common::pigs::{Pig, PigFetchQuery};
 use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;
@@ -29,7 +28,7 @@ pub enum Status<T> {
     Pending,
 }
 
-/// When Rocket returns a HTTP error as JSON, the actual error data is wrapped
+/// When Rocket returns an HTTP error as JSON, the actual error data is wrapped
 /// in an "error" tag. This represents the parent tag, with ApiError holding the
 /// data we actually care about.
 #[derive(Debug, Deserialize)]
@@ -38,7 +37,7 @@ struct ApiErrorWrapper {
 }
 
 /// Represents an error encountered when handling API requests
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ApiError {
     /// The HTTP code returned by the server. Not set for local errors (JSON parsing)
     pub code: Option<u16>,
@@ -101,6 +100,7 @@ impl From<std::io::Error> for ApiError {
 // this must defined BEFORE the individual endpoints
 macro_rules! endpoint {
     ($name:ident, $input:ty, $output:ty, $requester:expr) => {
+        #[derive(Debug)]
         pub struct $name {
             receiver: MaybeWaiting<$output>,
         }
@@ -120,7 +120,7 @@ macro_rules! endpoint {
                 let status = check_response_status(&mut self.receiver);
 
                 // Drop the receiver if we have a response
-                if !matches!(&status, Pending) {
+                if !matches!(&status, crate::data::api::Status::Pending) {
                     self.discard();
                 }
 
@@ -134,6 +134,7 @@ macro_rules! endpoint {
     };
 }
 
+#[derive(Debug)]
 pub struct AuthApi {
     pub is_authenticated: AuthCheckHandler,
 }
@@ -168,6 +169,7 @@ endpoint!(AuthCheckHandler, bool, bool, |_ignored: bool| {
 });
 
 /// Represents the API for working with pigs
+#[derive(Debug)]
 pub struct PigApi {
     /// Create a new pig given the name as a &str
     pub create: PigCreateHandler,
@@ -271,11 +273,10 @@ endpoint!(PigDeleteHandler, Uuid, Response, |input: Uuid| {
     rx
 });
 
-endpoint!(PigFetchHandler, &str, Vec<Pig>, |input: &str| {
+endpoint!(PigFetchHandler, PigFetchQuery, Vec<Pig>, |params: PigFetchQuery| {
     let (tx, rx) = oneshot::channel();
 
     // Submit the request to the server
-    let params = PigFetchQuery { name: Some(input.to_owned()), ..Default::default() };
     let req = Request {
         credentials: Credentials::SameOrigin,
         headers: Headers::new(&[("Accept", "application/json")]),
@@ -318,11 +319,11 @@ fn check_response_status<T>(maybe: &mut MaybeWaiting<T>) -> Status<T> {
     match maybe {
         Some(receiver) => match receiver.try_recv() {
             Ok(res) => match res {
-                Ok(t) => Received(t),
-                Err(e) => Errored(e),
+                Ok(t) => Status::Received(t),
+                Err(e) => Status::Errored(e),
             },
-            Err(_) => Pending,
+            Err(_) => Status::Pending,
         },
-        None => Pending,
+        None => Status::Pending,
     }
 }

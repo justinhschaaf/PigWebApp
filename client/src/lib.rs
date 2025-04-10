@@ -1,7 +1,7 @@
-#![warn(clippy::all, rust_2018_idioms)]
-
 mod app;
 mod data;
 mod modal;
+mod pages;
+mod style;
 
 pub use app::PigWebClient;

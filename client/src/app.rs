@@ -1,596 +1,71 @@
-use crate::app::Page::Pigs;
-use crate::data::{ApiError, AuthApi, PigApi, Status};
-use crate::modal::Modal;
-use chrono::Local;
-use egui::epaint::text::{FontInsert, InsertFontFamily};
-use egui::text::LayoutJob;
-use egui::{
-    menu, Align, Button, CentralPanel, Context, FontData, FontSelection, Label, Layout, OpenUrl, ScrollArea,
-    SelectableLabel, Sense, SidePanel, TextEdit, TopBottomPanel, Ui, ViewportCommand, Widget,
-};
-use egui_colors::tokens::ThemeColor;
-use egui_colors::Colorix;
-use egui_extras::{Column, TableBody};
-use egui_flex::{item, Flex, FlexJustify};
-use pigweb_common::pigs::Pig;
-use pigweb_common::{yuri, AUTH_API_ROOT};
+use crate::data::api::ApiError;
+use crate::data::state::ClientState;
+use crate::pages::layout::Layout;
+use crate::pages::{pigpage, Page, PageImpl};
+use egui::Context;
+use egui_router::EguiRouter;
+use tokio::sync::mpsc;
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-const THEME_PRIMARY: ThemeColor = ThemeColor::Gray;
-const THEME_ACCENT: ThemeColor = ThemeColor::Custom([255, 137, 172]);
-const THEME: [ThemeColor; 12] = [
-    THEME_PRIMARY,
-    THEME_PRIMARY,
-    THEME_ACCENT,
-    THEME_ACCENT,
-    THEME_ACCENT,
-    THEME_PRIMARY,
-    THEME_PRIMARY,
-    THEME_ACCENT,
-    THEME_ACCENT,
-    THEME_ACCENT,
-    THEME_PRIMARY,
-    THEME_PRIMARY,
-];
-
-const FONT_MAIN: &[u8] = include_bytes!("../data/ReadexPro-Regular.ttf");
-const FONT_MONO: &[u8] = include_bytes!("../data/IBMPlexMono-Medium.ttf");
-
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-enum Page {
-    Pigs,
-    Logs,
-    Users,
-    System,
-}
-
-// ( ͡° ͜ʖ ͡°)
-enum DirtyAction {
-    Create(String),
-    Select(Pig),
-    None,
-}
-
-// TODO figure out whether we really need to save any state or if it's better to just reset
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct PigWebClient {
-    #[serde(skip)]
-    authenticated: bool,
-
-    // The currently open page, see above for options
-    page: Page,
-
-    // Theming
-    #[serde(skip)]
-    colorix: Colorix,
-
-    #[serde(skip)]
-    auth_api: AuthApi,
-
-    // Handles sending and receiving API data
-    #[serde(skip)]
-    pig_api: PigApi,
-
-    // The current search query
-    query: String,
-
-    // The current list of search results
-    #[serde(skip)]
-    query_results: Option<Vec<Pig>>,
-
-    // The currently selected pig
-    selection: Option<Pig>,
-
-    // Whether we have unsaved changes
-    dirty: bool,
-
-    // Whether to show the modal to confirm deleting a pig
-    #[serde(skip)]
-    delete_modal: bool,
-
-    // Modal which warns you when there's unsaved changes
-    #[serde(skip)]
-    dirty_modal: bool,
-
-    #[serde(skip)]
-    dirty_modal_action: DirtyAction,
-
-    // Whether to show the modal error messages are displayed on
-    // TODO swap error modal for banner
-    #[serde(skip)]
-    error_modal: bool,
-
-    // The message to display on the error modal
-    #[serde(skip)]
-    error_modal_err: Option<ApiError>,
-}
-
-impl Default for PigWebClient {
-    fn default() -> Self {
-        Self {
-            authenticated: false,
-            page: Pigs,
-            colorix: Colorix::default(), // Properly initialized in new()
-            auth_api: AuthApi::default(),
-            pig_api: PigApi::default(),
-            query: String::default(),
-            query_results: None,
-            selection: None,
-            dirty: false,
-            delete_modal: false,
-            dirty_modal: false,
-            dirty_modal_action: DirtyAction::None,
-            error_modal: false,
-            error_modal_err: None,
-        }
-    }
+    state: ClientState,
+    router: EguiRouter<ClientState>,
+    route_receiver: mpsc::Receiver<Page>,
 }
 
 impl PigWebClient {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // This is also where you can customize the look and feel of egui using
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
+        let (tx, route_receiver) = mpsc::channel(8);
+        let mut state = ClientState::new(cc, tx);
+        let router = get_router(&mut state);
 
-        // Set zoom to 110% so everything is slightly easier to see
-        cc.egui_ctx.set_zoom_factor(1.1);
-
-        // Initialize Colorix with the global ctx and our theme. We could use
-        // Colorix::local_from_style without the context, but we would also have
-        // to know in advance if dark mode is enabled. It's easier to just let
-        // the widget and egui itself worry about that.
-        let colorix = Colorix::global(&cc.egui_ctx, THEME);
-
-        // Add fonts https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/examples/custom_font/src/main.rs
-        cc.egui_ctx.add_font(FontInsert::new(
-            "readex-pro",
-            FontData::from_static(FONT_MAIN),
-            vec![InsertFontFamily {
-                family: egui::FontFamily::Proportional,
-                priority: egui::epaint::text::FontPriority::Highest,
-            }],
-        ));
-
-        cc.egui_ctx.add_font(FontInsert::new(
-            "ibm-plex-mono",
-            FontData::from_static(FONT_MONO),
-            vec![InsertFontFamily {
-                family: egui::FontFamily::Monospace,
-                priority: egui::epaint::text::FontPriority::Highest,
-            }],
-        ));
-
-        // Prepare default data to return
-        let mut res: Self = Default::default();
-
-        // Load previous app state (if any).
-        // Note that you must enable the `persistence` feature for this to work.
-        if let Some(storage) = cc.storage {
-            res = eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default();
-        }
-
-        // Check whether the user is logged in
-        res.auth_api.is_authenticated.request(false); // this arg doesn't matter
-
-        // Initialize pig list
-        res.do_query();
-
-        // Respond with the theme + the default or loaded data
-        Self { colorix, ..res }
-    }
-
-    fn process_promises(&mut self) {
-        match self.auth_api.is_authenticated.resolve() {
-            Status::Received(authenticated) => self.authenticated = authenticated,
-            Status::Errored(err) => self.warn_generic_error(err),
-            Status::Pending => {}
-        }
-
-        match self.pig_api.create.resolve() {
-            Status::Received(pig) => {
-                self.dirty = false;
-                self.selection = Some(pig);
-                self.do_query(); // Redo the search query so it includes the new pig
-            }
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    self.authenticated = false;
-                } else {
-                    self.warn_generic_error(err);
-                }
-            }
-            Status::Pending => {}
-        }
-
-        match self.pig_api.update.resolve() {
-            Status::Received(_) => {
-                self.dirty = false;
-                self.do_query(); // Redo the search query so it includes any possible changes
-            }
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    self.authenticated = false;
-                } else {
-                    self.warn_generic_error(err);
-                }
-            }
-            Status::Pending => {}
-        }
-
-        match self.pig_api.delete.resolve() {
-            Status::Received(_) => {
-                self.dirty = false;
-                self.selection = None;
-                self.do_query(); // Redo the search query to exclude the deleted pig
-            }
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    self.authenticated = false;
-                } else {
-                    self.warn_generic_error(err);
-                }
-            }
-            Status::Pending => {}
-        }
-
-        match self.pig_api.fetch.resolve() {
-            Status::Received(pigs) => self.query_results = Some(pigs),
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    self.authenticated = false;
-                } else {
-                    self.warn_generic_error(err);
-                }
-            }
-            Status::Pending => {}
-        }
-    }
-
-    fn populate_menu(&mut self, ui: &mut Ui) {
-        ui.add_space(2.0);
-
-        // Use the Colorix theme picker instead of egui's
-        self.colorix.light_dark_toggle_button(ui, 14.0);
-
-        ui.separator();
-
-        // TODO only show pages you have access to
-        ui.selectable_value(&mut self.page, Pigs, " 🐖 Pigs ");
-        ui.add_enabled(false, SelectableLabel::new(false, " 📄 Logs "));
-        ui.add_enabled(false, SelectableLabel::new(false, " 😐 Users "));
-        ui.add_enabled(false, SelectableLabel::new(false, " ⛭ System "));
-
-        // Show debug warning
-        if cfg!(debug_assertions) {
-            ui.separator();
-            egui::warn_if_debug_build(ui);
-        }
-
-        // This right aligns it on the same row
-        let is_web = cfg!(target_arch = "wasm32");
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            // Show the quit button if somehow this gets run on desktop
-            // (you shouldn't, dumbass)
-            if !is_web && ui.button("🗙").clicked() {
-                ui.ctx().send_viewport_cmd(ViewportCommand::Close);
-            }
-
-            // Logout
-            if ui.button("⎆").clicked() {
-                ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/logout/")));
-            }
-        });
-    }
-
-    fn populate_sidebar(&mut self, ui: &mut Ui) {
-        ui.set_width(320.0);
-        ui.add_space(8.0);
-        ui.heading("The Pig List");
-        ui.add_space(8.0);
-
-        ui.horizontal(|ui| {
-            // Search bar, perform a search if it's been changed
-            if ui.add(TextEdit::singleline(&mut self.query).hint_text("Search")).changed() {
-                self.do_query();
-            }
-
-            // Pig create button, it's only enabled when you have something in the search bar
-            ui.add_enabled_ui(!self.query.is_empty(), |ui| {
-                if ui.button("+ Add").clicked() {
-                    self.warn_if_dirty(DirtyAction::Create(self.query.to_owned()));
-                }
-            });
-        });
-
-        ui.add_space(4.0);
-
-        // Only render the results table if we have results to show
-        // TODO add pagination
-        if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
-            egui_extras::TableBuilder::new(ui)
-                .striped(true)
-                .resizable(false)
-                .column(Column::remainder())
-                .sense(Sense::click())
-                .cell_layout(Layout::left_to_right(Align::Center))
-                .body(|mut body| {
-                    let pigs = self.query_results.as_ref().unwrap();
-                    // This means we don't have to clone the list every frame
-                    let mut clicked: Option<Pig> = None;
-                    pigs.iter().for_each(|pig| {
-                        body.row(18.0, |mut row| {
-                            // idfk why this wants us to clone selection, otherwise self is supposedly moved
-                            row.set_selected(self.selection.as_ref().is_some_and(|select| select.id == pig.id));
-
-                            // Make sure we can't select the text or else we can't click the row behind
-                            row.col(|ui| {
-                                Label::new(&pig.name).selectable(false).truncate().ui(ui);
-                            });
-
-                            // On click, check if we have to change the selection before processing it
-                            if row.response().clicked() && !self.selection.as_ref().is_some_and(|sel| sel.id == pig.id)
-                            {
-                                // warn about unsaved changes, else JUST DO IT
-                                // ...and we clone the clone because of fucking course we do D:<
-                                clicked = Some(pig.clone());
-                            }
-                        });
-                    });
-
-                    // Check if we have an action to do
-                    if clicked.is_some() {
-                        self.warn_if_dirty(DirtyAction::Select(clicked.unwrap()));
-                    }
-                });
-        } else if self.query_results.is_none() {
-            // Still waiting on results, this should only happen when waiting
-            // since otherwise it'll be an empty vec
-
-            // You spin me right 'round, baby, 'right round
-            // Like a record, baby, right 'round, 'round, 'round
-            ui.vertical_centered(|ui| ui.spinner());
-        }
-    }
-
-    fn populate_center(&mut self, ui: &mut Ui) {
-        ui.set_max_width(540.0);
-        self.colorix.draw_background(ui.ctx(), false);
-
-        // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
-        if let Some(pig) = self.selection.as_mut() {
-            // Title
-            ui.add_space(8.0);
-            ui.heading(pig.name.to_owned()); // convert to owned since we transfer a mut reference later
-            ui.add_space(8.0);
-
-            // Pig action buttons
-            Flex::horizontal().w_full().justify(FlexJustify::SpaceBetween).show(ui, |flex| {
-                let save_button = Button::new("💾 Save");
-                let delete_button = Button::new("🗑 Delete");
-
-                // TODO set as disabled again when not dirty. we just have to live with this until https://github.com/lucasmerlin/hello_egui/pull/50 is done
-                if flex.add(item().grow(1.0), save_button).clicked() {
-                    self.pig_api.update.request(pig);
-                }
-
-                if flex.add(item().grow(1.0), delete_button).clicked() {
-                    self.delete_modal = true;
-                }
-            });
-
-            ui.add_space(4.0);
-
-            egui_extras::TableBuilder::new(ui)
-                .striped(true)
-                .resizable(false)
-                .column(Column::initial(180.0))
-                .column(Column::remainder())
-                .cell_layout(Layout::left_to_right(Align::Center))
-                .body(|mut body| {
-                    add_pig_properties_row(&mut body, 40.0, "id", |ui| {
-                        ui.code(pig.id.to_string());
-                    });
-
-                    add_pig_properties_row(&mut body, 80.0, "name", |ui| {
-                        // yes, all this is necessary
-                        // centered_and_justified makes the text box fill the value cell
-                        // ScrollArea lets you scroll when it's too big
-                        ui.centered_and_justified(|ui| {
-                            ScrollArea::vertical().show(ui, |ui| {
-                                // Adapted from https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/crates/egui/src/widgets/text_edit/builder.rs#L521-L529
-                                // We need to write a custom layouter for this so we can visually
-                                // wrap the text while still treating it as a single line
-                                let mut wrapped_singleline_layouter = |ui: &Ui, text: &str, wrap_width: f32| {
-                                    let job = LayoutJob::simple(
-                                        text.to_owned(),
-                                        FontSelection::default().resolve(ui.style()),
-                                        ui.visuals()
-                                            .override_text_color
-                                            .unwrap_or_else(|| ui.visuals().widgets.inactive.text_color()),
-                                        wrap_width,
-                                    );
-                                    ui.fonts(|f| f.layout_job(job))
-                                };
-
-                                let te = TextEdit::singleline(&mut pig.name)
-                                    .desired_rows(4)
-                                    .layouter(&mut wrapped_singleline_layouter);
-
-                                if te.show(ui).response.changed() {
-                                    self.dirty = true;
-                                }
-                            });
-                        });
-                    });
-
-                    add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
-                        // TODO actually bother fetching the user data
-                        ui.code(pig.creator.to_string());
-                    });
-
-                    add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
-                        let create_time = pig.created.and_utc().with_timezone(&Local);
-                        ui.label(create_time.format("%a, %b %e %Y %T").to_string());
-                    });
-                });
-        }
-    }
-
-    fn show_modals(&mut self, ctx: &Context) {
-        if !self.authenticated {
-            let modal = Modal::new("Login")
-                .with_body("You need to login or renew your session to continue.")
-                .cancellable(false)
-                .show_with_extras(ctx, |ui| {
-                    if ui.button("✔ Ok").clicked() {
-                        ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/login/")));
-                    }
-                });
-
-            if modal.should_close() {
-                ctx.open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/login/")));
-            }
-        }
-
-        if self.delete_modal {
-            let modal = Modal::new("delete")
-                .with_heading("Confirm Deletion")
-                .with_body("Are you sure you want to delete this pig? There's no going back after this!")
-                .show_with_extras(ctx, |ui| {
-                    if ui.button("✔ Yes").clicked() {
-                        match self.selection.as_ref() {
-                            Some(pig) => self.pig_api.delete.request(pig.id),
-                            None => self.warn_generic_error(
-                                ApiError::new("You tried to delete a pig without having one selected, how the fuck did you manage that?".to_owned())
-                            ),
-                        }
-                        self.delete_modal = false;
-                    }
-                });
-
-            if modal.should_close() {
-                self.delete_modal = false;
-            }
-        }
-
-        if self.dirty_modal {
-            let modal = Modal::new("dirty")
-                .with_heading("Discard Unsaved Changes")
-                .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
-                .show_with_extras(ctx, |ui| {
-                    if ui.button("✔ Yes").clicked() {
-                        self.do_dirty_action();
-                        self.dirty_modal = false;
-                    }
-                });
-
-            if modal.should_close() {
-                self.dirty_modal = false;
-            }
-        }
-
-        if self.error_modal {
-            if let Some(err_unwrapped) = self.error_modal_err.as_ref() {
-                let heading = err_unwrapped.reason.as_ref().unwrap_or(&"Error".to_owned()).to_string();
-                let heading_with_code = match err_unwrapped.code {
-                    Some(code) => format!("{:?} {:?}", code, heading),
-                    None => heading,
-                };
-
-                let modal = Modal::new("error")
-                    .with_heading(heading_with_code)
-                    .with_body(err_unwrapped.description.as_str())
-                    .show(ctx);
-
-                if modal.should_close() {
-                    self.error_modal = false;
-                }
-            }
-        }
-    }
-
-    /// If the dirty var is true, warn the user with a modal before performing
-    /// the given action; otherwise, just do it
-    fn warn_if_dirty(&mut self, action: DirtyAction) {
-        self.dirty_modal_action = action;
-
-        if self.dirty {
-            self.dirty_modal = true;
-        } else {
-            self.do_dirty_action();
-        }
-    }
-
-    /// Sets the error modal's message, marks the modal to be shown, and logs
-    /// the error
-    fn warn_generic_error(&mut self, err: ApiError) {
-        self.error_modal = true;
-        self.error_modal_err = Some(err);
-    }
-
-    /// Sends a fetch request for all results of the current query and clears
-    /// the list of current results
-    fn do_query(&mut self) {
-        self.query_results = None;
-        self.pig_api.fetch.request(&self.query);
-    }
-
-    fn do_dirty_action(&mut self) {
-        match &self.dirty_modal_action {
-            DirtyAction::Create(name) => self.pig_api.create.request(name),
-            DirtyAction::Select(pig) => self.selection = Some(pig.to_owned()),
-            DirtyAction::None => {}
-        }
-        // Reset dirty state, how tf did i forget this?
-        self.dirty = false;
+        Self { state, router, route_receiver }
     }
 }
 
 impl eframe::App for PigWebClient {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        // Handle all the incoming data
-        self.process_promises();
-
-        // Put your widgets into a `SidePanel`, `TopBottomPanel`, `CentralPanel`, `Window` or `Area`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
-
-        TopBottomPanel::top("top_panel").resizable(false).show(ctx, |ui| {
-            menu::bar(ui, |ui| {
-                self.populate_menu(ui);
-            });
-        });
-
-        if self.authenticated {
-            SidePanel::left("left_panel").resizable(false).show(ctx, |ui| {
-                self.populate_sidebar(ui);
-            });
-
-            CentralPanel::default().show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    self.populate_center(ui);
-                });
-            });
+        // Determine if the route changed
+        if let Some(page) = self.route_receiver.try_recv().ok() {
+            let route = page.get_route();
+            self.state.page = page;
+            if let Err(err) = self.router.navigate(&mut self.state, route) {
+                self.state.display_error = Some(ApiError::new(err.to_string()));
+            }
         }
 
-        self.show_modals(ctx);
+        // Defer to the router to render everything
+        // TODO if this doesn't work, we'll have to manually create the Ui panel
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // Show the global layout first
+            Layout::ui(ui, &mut self.state);
+
+            // Then show the current route
+            self.router.ui(ui, &mut self.state)
+        });
     }
 
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, eframe::APP_KEY, self);
+        self.state.save(storage)
     }
 }
 
-// This is out here because putting it in the struct causes a self-reference error
-// it doesn't even need to use PigWebClient it's a fucking util method
-fn add_pig_properties_row(body: &mut TableBody<'_>, height: f32, label: &str, add_value: impl FnOnce(&mut Ui)) {
-    body.row(height, |mut row| {
-        row.col(|ui| {
-            ui.label(label);
-        });
-
-        row.col(add_value);
-    });
+pub fn get_router(state: &mut ClientState) -> EguiRouter<ClientState> {
+    // https://github.com/lucasmerlin/hello_egui/blob/b1093eff0361e639b1567bf34d4b8c136cebf141/fancy-example/src/routes.rs#L38-L55
+    EguiRouter::builder()
+        .history({
+            // if you try to return the history directly instead of setting a variable, it *will* complain loudly
+            #[cfg(target_arch = "wasm32")]
+            let history = egui_router::history::BrowserHistory::new(Some("/#".to_string()));
+            #[cfg(not(target_arch = "wasm32"))]
+            let history = egui_router::history::DefaultHistory::default();
+            history
+        })
+        .default_path("/")
+        .route("/pigs/{*slug}", pigpage::request)
+        .route("/pigs", pigpage::request)
+        .route_redirect("/", "/pigs")
+        .build(state)
 }

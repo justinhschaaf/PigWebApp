@@ -36,7 +36,7 @@ impl Modal {
         self
     }
 
-    pub fn show(mut self, ctx: &Context) -> Self {
+    pub fn show(self, ctx: &Context) -> Self {
         self.show_with_extras(ctx, |_| {})
     }
 
