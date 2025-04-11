@@ -1,13 +1,15 @@
-use crate::data::state::ClientState;
-use egui::Ui;
-use uuid::Uuid;
+use crate::pages::pigpage::PigPageData;
+use pigweb_common::yuri;
 
-pub(crate) mod layout;
-pub(crate) mod pigpage;
+pub mod layout;
+pub mod pigpage;
 
-#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
-pub(crate) enum Page {
-    Pigs(Option<Uuid>),
+pub const APP_ROOT: &str = "/";
+pub const PIG_PAGE: &str = "/pigs";
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub enum Page {
+    Pigs(PigPageData),
     Logs,
     Users,
     System,
@@ -16,19 +18,22 @@ pub(crate) enum Page {
 impl Page {
     pub fn get_route(&self) -> String {
         match self {
-            Page::Pigs(opt_id) => {
-                if let Some(id) = opt_id {
-                    format!("/pigs/{:?}", id)
+            Page::Pigs(data) => {
+                if let Some(pig) = &data.selection {
+                    let id_str = pig.id.to_string();
+                    yuri!(PIG_PAGE, id_str)
                 } else {
-                    "/pigs".to_owned()
+                    PIG_PAGE.to_owned()
                 }
             }
-            _ => "/".to_string(),
+            _ => APP_ROOT.to_string(),
         }
     }
-}
 
-pub trait PageImpl {
-    fn new() -> Self;
-    fn ui(ui: &mut Ui, state: &mut ClientState);
+    pub fn get_pig_page_data(&mut self) -> Option<&mut PigPageData> {
+        match self {
+            Page::Pigs(data) => Some(data),
+            _ => None,
+        }
+    }
 }

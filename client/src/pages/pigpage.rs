@@ -1,7 +1,7 @@
 use crate::data::api::{ApiError, PigApi, PigFetchHandler, Status};
 use crate::data::state::ClientState;
 use crate::modal::Modal;
-use crate::pages::{Page, PageImpl};
+use crate::pages::Page;
 use chrono::Local;
 use eframe::emath::Align;
 use eframe::epaint::text::LayoutJob;
@@ -17,7 +17,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub enum DirtyAction {
     Create(String),
-    Select(Pig),
+    Select(Option<Pig>),
     None,
 }
 
@@ -29,48 +29,47 @@ impl PartialEq for DirtyAction {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
-pub struct PigPage {
-    // Handles sending and receiving API data
-    #[serde(skip)]
-    pig_api: PigApi,
-
-    #[serde(skip)]
-    pig_fetch_from_slug: PigFetchHandler,
-
+pub struct PigPageData {
     // The current search query
     query: String,
 
-    // The current list of search results
-    #[serde(skip)]
-    query_results: Option<Vec<Pig>>,
-
     // The currently selected pig
-    selection: Option<Pig>,
+    pub selection: Option<Pig>,
 
     // Whether we have unsaved changes
     dirty: bool,
+}
+
+impl Default for PigPageData {
+    fn default() -> Self {
+        Self { query: String::default(), selection: None, dirty: false }
+    }
+}
+
+pub struct PigPageRender {
+    // Handles sending and receiving API data
+    pig_api: PigApi,
+
+    pig_fetch_from_slug: PigFetchHandler,
+
+    // The current list of search results
+    query_results: Option<Vec<Pig>>,
 
     /// Modal which warns you when there's unsaved changes
-    #[serde(skip)]
     pub dirty_modal: DirtyAction,
 
     /// Whether to show the modal to confirm deleting a pig
-    #[serde(skip)]
     pub delete_modal: bool,
 
-    #[serde(skip)]
     pub pig_not_found_modal: bool,
 }
 
-impl Default for PigPage {
+impl Default for PigPageRender {
     fn default() -> Self {
         Self {
             pig_api: PigApi::default(),
             pig_fetch_from_slug: PigFetchHandler::default(),
-            query: String::default(),
             query_results: None,
-            selection: None,
-            dirty: false,
             dirty_modal: DirtyAction::None,
             delete_modal: false,
             pig_not_found_modal: false,
@@ -78,39 +77,33 @@ impl Default for PigPage {
     }
 }
 
-impl PageImpl for PigPage {
-    fn new() -> Self {
-        let mut res = Self::default();
-        res
-    }
-
-    fn ui(ui: &mut Ui, state: &mut ClientState) {
-        Self::process_promises(state);
+impl Route<ClientState> for PigPageRender {
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState) {
+        self.process_promises(state);
 
         SidePanel::left("left_panel").resizable(false).show(ui.ctx(), |ui| {
-            Self::populate_sidebar(ui, state);
+            self.populate_sidebar(ui, state);
         });
 
         CentralPanel::default().show(ui.ctx(), |ui| {
             ui.vertical_centered(|ui| {
-                Self::populate_center(ui, state);
+                self.populate_center(ui, state);
             });
         });
 
-        Self::show_modals(ui.ctx(), state);
+        self.show_modals(ui.ctx(), state);
     }
 }
 
-impl PigPage {
-    fn process_promises(state: &mut ClientState) {
+impl PigPageRender {
+    fn process_promises(&mut self, state: &mut ClientState) {
         // TODO make a macro or function for these
-        match state.pig_page.pig_api.create.resolve() {
+        match self.pig_api.create.resolve() {
             Status::Received(pig) => {
-                let id = pig.id;
-                state.pig_page.dirty = false;
-                state.pig_page.selection = Some(pig);
-                state.update_route(Page::Pigs(Some(id))); // Tell the router we now have a selection
-                state.pig_page.do_query(); // Redo the search query so it includes the new pig
+                state.page.get_pig_page_data().unwrap().dirty = false;
+                state.page.get_pig_page_data().unwrap().selection = Some(pig);
+                state.refresh_route(); // Tell the router we now have a selection
+                self.do_query(state); // Redo the search query so it includes the new pig
             }
             Status::Errored(err) => {
                 if err.code == Some(401) {
@@ -122,10 +115,10 @@ impl PigPage {
             Status::Pending => {}
         }
 
-        match state.pig_page.pig_api.update.resolve() {
+        match self.pig_api.update.resolve() {
             Status::Received(_) => {
-                state.pig_page.dirty = false;
-                state.pig_page.do_query(); // Redo the search query so it includes any possible changes
+                state.page.get_pig_page_data().unwrap().dirty = false;
+                self.do_query(state); // Redo the search query so it includes any possible changes
             }
             Status::Errored(err) => {
                 if err.code == Some(401) {
@@ -137,12 +130,12 @@ impl PigPage {
             Status::Pending => {}
         }
 
-        match state.pig_page.pig_api.delete.resolve() {
+        match self.pig_api.delete.resolve() {
             Status::Received(_) => {
-                state.pig_page.dirty = false;
-                state.pig_page.selection = None;
-                state.update_route(Page::Pigs(None)); // Tell the router we no longer have a selection
-                state.pig_page.do_query(); // Redo the search query to exclude the deleted pig
+                state.page.get_pig_page_data().unwrap().dirty = false;
+                state.page.get_pig_page_data().unwrap().selection = None;
+                state.refresh_route(); // Tell the router we no longer have a selection
+                self.do_query(state); // Redo the search query to exclude the deleted pig
             }
             Status::Errored(err) => {
                 if err.code == Some(401) {
@@ -154,8 +147,8 @@ impl PigPage {
             Status::Pending => {}
         }
 
-        match state.pig_page.pig_api.fetch.resolve() {
-            Status::Received(pigs) => state.pig_page.query_results = Some(pigs),
+        match self.pig_api.fetch.resolve() {
+            Status::Received(pigs) => self.query_results = Some(pigs),
             Status::Errored(err) => {
                 if err.code == Some(401) {
                     state.authenticated = false;
@@ -166,14 +159,14 @@ impl PigPage {
             Status::Pending => {}
         }
 
-        match state.pig_page.pig_fetch_from_slug.resolve() {
+        match self.pig_fetch_from_slug.resolve() {
             Status::Received(mut pigs) => {
                 // This request should have been made with limit = 1
                 // therefore, the only pig is the one we want
                 if let Some(pig) = pigs.pop() {
-                    Self::warn_if_dirty(state, DirtyAction::Select(pig));
+                    self.warn_if_dirty(state, DirtyAction::Select(Some(pig)));
                 } else {
-                    state.pig_page.pig_not_found_modal = true;
+                    self.pig_not_found_modal = true;
                 }
             }
             Status::Errored(err) => {
@@ -187,7 +180,7 @@ impl PigPage {
         }
     }
 
-    fn populate_sidebar(ui: &mut Ui, state: &mut ClientState) {
+    fn populate_sidebar(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.set_width(320.0);
         ui.add_space(8.0);
         ui.heading("The Pig List");
@@ -195,14 +188,19 @@ impl PigPage {
 
         ui.horizontal(|ui| {
             // Search bar, perform a search if it's been changed
-            if ui.add(TextEdit::singleline(&mut state.pig_page.query).hint_text("Search")).changed() {
-                state.pig_page.do_query();
+            if ui
+                .add(TextEdit::singleline(&mut state.page.get_pig_page_data().unwrap().query).hint_text("Search"))
+                .changed()
+            {
+                self.do_query(state);
             }
 
             // Pig create button, it's only enabled when you have something in the search bar
-            ui.add_enabled_ui(!state.pig_page.query.is_empty(), |ui| {
+            ui.add_enabled_ui(!state.page.get_pig_page_data().unwrap().query.is_empty(), |ui| {
                 if ui.button("+ Add").clicked() {
-                    Self::warn_if_dirty(state, DirtyAction::Create(state.pig_page.query.to_owned()));
+                    // We need to save the name here or else borrow check complains
+                    let name = state.page.get_pig_page_data().unwrap().query.to_owned();
+                    self.warn_if_dirty(state, DirtyAction::Create(name));
                 }
             });
         });
@@ -211,7 +209,7 @@ impl PigPage {
 
         // Only render the results table if we have results to show
         // TODO add pagination
-        if state.pig_page.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
+        if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
             egui_extras::TableBuilder::new(ui)
                 .striped(true)
                 .resizable(false)
@@ -219,14 +217,20 @@ impl PigPage {
                 .sense(Sense::click())
                 .cell_layout(Layout::left_to_right(Align::Center))
                 .body(|mut body| {
-                    let pigs = state.pig_page.query_results.as_ref().unwrap();
+                    let pigs = self.query_results.as_ref().unwrap();
                     // This means we don't have to clone the list every frame
                     let mut clicked: Option<Pig> = None;
                     pigs.iter().for_each(|pig| {
                         body.row(18.0, |mut row| {
                             // idfk why this wants us to clone selection, otherwise page is supposedly moved
                             row.set_selected(
-                                state.pig_page.selection.as_ref().is_some_and(|select| select.id == pig.id),
+                                state
+                                    .page
+                                    .get_pig_page_data()
+                                    .unwrap()
+                                    .selection
+                                    .as_ref()
+                                    .is_some_and(|select| select.id == pig.id),
                             );
 
                             // Make sure we can't select the text or else we can't click the row behind
@@ -236,7 +240,13 @@ impl PigPage {
 
                             // On click, check if we have to change the selection before processing it
                             if row.response().clicked()
-                                && !state.pig_page.selection.as_ref().is_some_and(|sel| sel.id == pig.id)
+                                && !state
+                                    .page
+                                    .get_pig_page_data()
+                                    .unwrap()
+                                    .selection
+                                    .as_ref()
+                                    .is_some_and(|sel| sel.id == pig.id)
                             {
                                 // warn about unsaved changes, else JUST DO IT
                                 // ...and we clone the clone because of fucking course we do D:<
@@ -247,10 +257,10 @@ impl PigPage {
 
                     // Check if we have an action to do
                     if clicked.is_some() {
-                        Self::warn_if_dirty(state, DirtyAction::Select(clicked.unwrap()));
+                        self.warn_if_dirty(state, DirtyAction::Select(Some(clicked.unwrap())));
                     }
                 });
-        } else if state.pig_page.query_results.is_none() {
+        } else if self.query_results.is_none() {
             // Still waiting on results, this should only happen when waiting
             // since otherwise it'll be an empty vec
 
@@ -260,12 +270,15 @@ impl PigPage {
         }
     }
 
-    fn populate_center(ui: &mut Ui, state: &mut ClientState) {
+    fn populate_center(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.set_max_width(540.0);
         state.colorix.draw_background(ui.ctx(), false);
 
+        // fuck you E0500
+        let mut dirty_temp = false;
+
         // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
-        if let Some(pig) = state.pig_page.selection.as_mut() {
+        if let Some(pig) = state.page.get_pig_page_data().unwrap().selection.as_mut() {
             // Title
             ui.add_space(8.0);
             ui.heading(pig.name.to_owned()); // convert to owned since we transfer a mut reference later
@@ -278,11 +291,11 @@ impl PigPage {
 
                 // TODO set as disabled again when not dirty. we just have to live with this until https://github.com/lucasmerlin/hello_egui/pull/50 is done
                 if flex.add(item().grow(1.0), save_button).clicked() {
-                    state.pig_page.pig_api.update.request(pig);
+                    self.pig_api.update.request(pig);
                 }
 
                 if flex.add(item().grow(1.0), delete_button).clicked() {
-                    state.pig_page.delete_modal = true;
+                    self.delete_modal = true;
                 }
             });*/
 
@@ -325,7 +338,8 @@ impl PigPage {
                                     .layouter(&mut wrapped_singleline_layouter);
 
                                 if te.show(ui).response.changed() {
-                                    state.pig_page.dirty = true;
+                                    // fuck you E0500
+                                    dirty_temp = true;
                                 }
                             });
                         });
@@ -342,44 +356,49 @@ impl PigPage {
                     });
                 });
         }
+
+        // fuck you E0500
+        if dirty_temp {
+            state.page.get_pig_page_data().unwrap().dirty = true;
+        }
     }
 
-    fn show_modals(ctx: &Context, state: &mut ClientState) {
-        if state.pig_page.delete_modal {
+    fn show_modals(&mut self, ctx: &Context, state: &mut ClientState) {
+        if self.delete_modal {
             let modal = Modal::new("delete")
                 .with_heading("Confirm Deletion")
                 .with_body("Are you sure you want to delete this pig? There's no going back after this!")
                 .show_with_extras(ctx, |ui| {
                     if ui.button("✔ Yes").clicked() {
-                        match state.pig_page.selection.as_ref() {
-                            Some(pig) => state.pig_page.pig_api.delete.request(pig.id),
+                        match state.page.get_pig_page_data().unwrap().selection.as_ref() {
+                            Some(pig) => self.pig_api.delete.request(pig.id),
                             None => state.display_error = Some(ApiError::new("You tried to delete a pig without having one selected, how the fuck did you manage that?".to_owned())),
                         }
-                        state.pig_page.delete_modal = false;
+                        self.delete_modal = false;
                     }
                 });
 
             if modal.should_close() {
-                state.pig_page.delete_modal = false;
+                self.delete_modal = false;
             }
         }
 
-        if state.pig_page.dirty_modal != DirtyAction::None {
+        if self.dirty_modal != DirtyAction::None {
             let modal = Modal::new("dirty")
                 .with_heading("Discard Unsaved Changes")
                 .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
                 .show_with_extras(ctx, |ui| {
                     if ui.button("✔ Yes").clicked() {
-                        Self::do_dirty_action(state);
+                        self.do_dirty_action(state);
                     }
                 });
 
             if modal.should_close() {
-                state.pig_page.dirty_modal = DirtyAction::None;
+                self.dirty_modal = DirtyAction::None;
             }
         }
 
-        if state.pig_page.pig_not_found_modal {
+        if self.pig_not_found_modal {
             let modal = Modal::new("pig_not_found")
                 .with_heading("Pig Not Found")
                 .with_body("We couldn't find a pig with that id.")
@@ -387,92 +406,94 @@ impl PigPage {
 
             if modal.should_close() {
                 // Close the modal
-                state.pig_page.pig_not_found_modal = false;
+                self.pig_not_found_modal = false;
 
                 // Update the route
-                state.update_route(Page::Pigs(state.pig_page.selection.as_ref().map(|pig| pig.id)));
+                state.refresh_route()
             }
         }
     }
 
     /// Sends a fetch request for all results of the current query and clears
     /// the list of current results
-    fn do_query(&mut self) {
+    fn do_query(&mut self, state: &mut ClientState) {
         self.query_results = None;
-        self.pig_api.fetch.request(PigFetchQuery::default().with_name(&self.query));
+        self.pig_api.fetch.request(PigFetchQuery::default().with_name(&state.page.get_pig_page_data().unwrap().query));
     }
 
     /// If the dirty var is true, warn the user with a modal before performing
     /// the given action; otherwise, just do it
-    fn warn_if_dirty(state: &mut ClientState, action: DirtyAction) {
-        state.pig_page.dirty_modal = action;
+    fn warn_if_dirty(&mut self, state: &mut ClientState, action: DirtyAction) {
+        self.dirty_modal = action;
 
         // If the state isn't dirty, execute the action right away
         // else if dirty_modal is not None, it will be shown
-        if !state.pig_page.dirty {
-            Self::do_dirty_action(state);
+        if !state.page.get_pig_page_data().unwrap().dirty {
+            self.do_dirty_action(state);
         }
     }
 
-    fn do_dirty_action(state: &mut ClientState) {
-        match &state.pig_page.dirty_modal {
-            DirtyAction::Create(name) => state.pig_page.pig_api.create.request(name),
-            DirtyAction::Select(pig) => {
+    fn do_dirty_action(&mut self, state: &mut ClientState) {
+        match &self.dirty_modal {
+            DirtyAction::Create(name) => self.pig_api.create.request(name),
+            DirtyAction::Select(selection) => {
                 // Change the selection
-                state.pig_page.selection = Some(pig.to_owned());
+                state.page.get_pig_page_data().unwrap().selection =
+                    selection.as_ref().and_then(|pig| Some(pig.to_owned()));
 
                 // Tell the router about the updated route
-                state.update_route(Page::Pigs(Some(pig.id)));
+                state.refresh_route()
             }
             DirtyAction::None => {}
         }
         // Reset dirty state, how tf did i forget this?
-        state.pig_page.dirty_modal = DirtyAction::None;
-        state.pig_page.dirty = false;
+        self.dirty_modal = DirtyAction::None;
+        state.page.get_pig_page_data().unwrap().dirty = false;
     }
 }
 
 // Due to the design of egui_router, this unfortunately CANNOT be part of a
 // struct or else rustc will not shut the fuck up about it
 pub fn request(req: Request<ClientState>) -> impl Route<ClientState> {
-    // Initialize the list right away
-    req.state.pig_page.do_query();
+    // Check if the page in global state has already been set
+    if req.state.page.get_pig_page_data().is_none() {
+        req.state.page = Page::Pigs(PigPageData::default())
+    }
+
+    let mut render = PigPageRender::default();
+    render.do_query(req.state);
+
+    let data = req.state.page.get_pig_page_data().unwrap(); // we just set this if it wasn't
 
     // Check our route
     if let Some(slug) = req.params.get("slug") {
         // convert slug to uuid
         match Uuid::try_parse(slug) {
             Ok(slug_id) => {
-                let mut change_selection = true;
-
-                // If the slug equals the selected pig, we don't need to fetch data
-                if let Some(selected) = req.state.pig_page.selection.as_ref() {
-                    if slug_id == selected.id {
-                        change_selection = false;
-                    }
-                }
-
-                // Fetch the data of the desired pig
-                if change_selection {
-                    req.state
-                        .pig_page
-                        .pig_fetch_from_slug
-                        .request(PigFetchQuery::default().with_id(&slug_id).with_limit(1));
+                // If we don't have a selection or the slug doesn't equal the
+                // current selection, fetch the data of the desired pig
+                if data.selection.as_ref().is_none_or(|selected| slug_id != selected.id) {
+                    render.pig_fetch_from_slug.request(PigFetchQuery::default().with_id(&slug_id).with_limit(1));
                 }
             }
             Err(err) => {
                 req.state.display_error =
                     Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
-                req.state.update_route(Page::Pigs(None));
+                req.state.refresh_route();
             }
         }
-    } else if let Some(selected) = req.state.pig_page.selection.as_ref() {
-        // if we have a pig selected, tell the router
-        req.state.update_route(Page::Pigs(Some(selected.id)));
+    } else if data.selection.is_some() {
+        // if we have a pig selected, deselect it
+        // yes, this is a simplified reconstruction of warn_if_dirty() and do_dirty_action because rustc complains
+        if !data.dirty {
+            data.selection = None;
+        } else {
+            render.dirty_modal = DirtyAction::Select(None);
+        }
     }
 
-    // actually render the page.
-    move |ui: &mut Ui, state: &mut ClientState| PigPage::ui(ui, state)
+    // initialize the list right away and actually render the page.
+    move |ui: &mut Ui, state: &mut ClientState| render.ui(ui, state)
 }
 
 // This is out here because putting it in the struct causes a self-reference error

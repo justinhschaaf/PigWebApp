@@ -1,15 +1,15 @@
 use crate::data::api::ApiError;
 use crate::data::state::ClientState;
 use crate::pages::layout::Layout;
-use crate::pages::{pigpage, Page, PageImpl};
+use crate::pages::{pigpage, APP_ROOT, PIG_PAGE};
 use egui::Context;
-use egui_router::EguiRouter;
+use egui_router::{EguiRouter, TransitionConfig};
 use tokio::sync::mpsc;
 
 pub struct PigWebClient {
     state: ClientState,
     router: EguiRouter<ClientState>,
-    route_receiver: mpsc::Receiver<Page>,
+    route_receiver: mpsc::Receiver<String>,
 }
 
 impl PigWebClient {
@@ -27,9 +27,7 @@ impl eframe::App for PigWebClient {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         // Determine if the route changed
-        if let Some(page) = self.route_receiver.try_recv().ok() {
-            let route = page.get_route();
-            self.state.page = page;
+        if let Some(route) = self.route_receiver.try_recv().ok() {
             if let Err(err) = self.router.navigate(&mut self.state, route) {
                 self.state.display_error = Some(ApiError::new(err.to_string()));
             }
@@ -63,9 +61,11 @@ pub fn get_router(state: &mut ClientState) -> EguiRouter<ClientState> {
             let history = egui_router::history::DefaultHistory::default();
             history
         })
-        .default_path("/")
+        .transition(TransitionConfig::fade())
+        .default_duration(0.3)
+        .default_path(APP_ROOT)
         .route("/pigs/{*slug}", pigpage::request)
-        .route("/pigs", pigpage::request)
-        .route_redirect("/", "/pigs")
+        .route(PIG_PAGE, pigpage::request)
+        .route_redirect(APP_ROOT, "/pigs")
         .build(state)
 }

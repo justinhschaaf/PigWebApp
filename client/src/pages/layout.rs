@@ -1,7 +1,6 @@
 use crate::data::api::{AuthApi, Status};
 use crate::data::state::ClientState;
 use crate::modal::Modal;
-use crate::pages::{Page, PageImpl};
 use eframe::emath::Align;
 use egui::{menu, Context, OpenUrl, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
 use pigweb_common::{yuri, AUTH_API_ROOT};
@@ -24,12 +23,8 @@ impl Default for Layout {
     }
 }
 
-impl PageImpl for Layout {
-    fn new() -> Self {
-        Default::default()
-    }
-
-    fn ui(ui: &mut Ui, state: &mut ClientState) {
+impl Layout {
+    pub fn ui(ui: &mut Ui, state: &mut ClientState) {
         // Handle all the incoming data
         Self::process_promises(state);
 
@@ -41,9 +36,7 @@ impl PageImpl for Layout {
 
         Self::show_modals(ui.ctx(), state);
     }
-}
 
-impl Layout {
     fn process_promises(state: &mut ClientState) {
         match state.layout.auth_api.is_authenticated.resolve() {
             Status::Received(authenticated) => state.authenticated = authenticated,
@@ -61,7 +54,8 @@ impl Layout {
         ui.separator();
 
         // TODO only show pages you have access to
-        ui.selectable_value(&mut state.page, Page::Pigs(None), " 🐖 Pigs ");
+        // TODO make these actually route
+        ui.toggle_value(&mut true, " 🐖 Pigs ");
         ui.add_enabled(false, SelectableLabel::new(false, " 📄 Logs "));
         ui.add_enabled(false, SelectableLabel::new(false, " 😐 Users "));
         ui.add_enabled(false, SelectableLabel::new(false, " ⛭ System "));
