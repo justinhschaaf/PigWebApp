@@ -928,32 +928,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "egui_inbox"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "009ecee53675c5596174556fd3d7792301db56b9bd244b89b1cda269cfbcc256"
-dependencies = [
- "egui",
- "parking_lot",
-]
-
-[[package]]
-name = "egui_router"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113a1bfd6f6ed9c667adb82468fe2f6e4059b873856b20bbfaf420703accae65"
-dependencies = [
- "egui",
- "egui_inbox",
- "form_urlencoded",
- "js-sys",
- "matchit",
- "thiserror 2.0.11",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
 name = "ehttp"
 version = "0.5.0"
 source = "git+https://github.com/jheidecker/ehttp.git?rev=3394080225991402e9f0273dac733036d0e1fc18#3394080225991402e9f0273dac733036d0e1fc18"
@@ -1954,12 +1928,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "matchit"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f926ade0c4e170215ae43342bf13b9310a437609c81f29f86c5df6657582ef9"
-
-[[package]]
 name = "memchr"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2546,7 +2514,6 @@ dependencies = [
  "egui_colors",
  "egui_extras",
  "egui_flex",
- "egui_router",
  "ehttp",
  "form_urlencoded",
  "log",

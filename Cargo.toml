@@ -35,7 +35,6 @@ egui = "0.31.1"
 egui_colors = "0.8.0"
 egui_extras = { version = "0.31.1", default-features = false, features = ["serde"] }
 egui_flex = "0.3.0"
-egui_router = "0.4.0"
 eframe = { version = "0.31.1", default-features = false, features = [
     "default_fonts", # Embed the default egui fonts.
     "glow", # Use the glow rendering backend. Alternative: "wgpu".

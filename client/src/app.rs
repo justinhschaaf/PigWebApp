@@ -1,71 +1,60 @@
-use crate::data::api::ApiError;
 use crate::data::state::ClientState;
 use crate::pages::layout::Layout;
-use crate::pages::{pigpage, APP_ROOT, PIG_PAGE};
+use crate::pages::pigpage::PigPage;
+use crate::pages::{Page, PageImpl};
+use crate::style;
 use egui::Context;
-use egui_router::{EguiRouter, TransitionConfig};
-use tokio::sync::mpsc;
 
+/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+// TODO figure out whether we really need to save any state or if it's better to just reset
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct PigWebClient {
+    /// Global app info
     state: ClientState,
-    router: EguiRouter<ClientState>,
-    route_receiver: mpsc::Receiver<String>,
+
+    /// The currently open page
+    page: Page,
 }
 
-impl PigWebClient {
-    /// Called once before the first frame.
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        let (tx, route_receiver) = mpsc::channel(8);
-        let mut state = ClientState::new(cc, tx);
-        let router = get_router(&mut state);
-
-        Self { state, router, route_receiver }
+impl Default for PigWebClient {
+    fn default() -> Self {
+        Self { state: ClientState::default(), page: Page::Pigs(PigPage::default()) }
     }
 }
 
 impl eframe::App for PigWebClient {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-        // Determine if the route changed
-        if let Some(route) = self.route_receiver.try_recv().ok() {
-            if let Err(err) = self.router.navigate(&mut self.state, route) {
-                self.state.display_error = Some(ApiError::new(err.to_string()));
-            }
-        }
-
-        // Defer to the router to render everything
-        // TODO if this doesn't work, we'll have to manually create the Ui panel
         egui::CentralPanel::default().show(ctx, |ui| {
             // Show the global layout first
             Layout::ui(ui, &mut self.state);
 
             // Then show the current route
-            self.router.ui(ui, &mut self.state)
+            match &mut self.page {
+                Page::Pigs(page) => page.ui(ui, &mut self.state),
+                _ => {}
+            }
         });
     }
 
     /// Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        self.state.save(storage)
+        eframe::set_value(storage, Self::APP_KEY, &self);
     }
 }
 
-pub fn get_router(state: &mut ClientState) -> EguiRouter<ClientState> {
-    // https://github.com/lucasmerlin/hello_egui/blob/b1093eff0361e639b1567bf34d4b8c136cebf141/fancy-example/src/routes.rs#L38-L55
-    EguiRouter::builder()
-        .history({
-            // if you try to return the history directly instead of setting a variable, it *will* complain loudly
-            #[cfg(target_arch = "wasm32")]
-            let history = egui_router::history::BrowserHistory::new(Some("/#".to_string()));
-            #[cfg(not(target_arch = "wasm32"))]
-            let history = egui_router::history::DefaultHistory::default();
-            history
-        })
-        .transition(TransitionConfig::fade())
-        .default_duration(0.3)
-        .default_path(APP_ROOT)
-        .route("/pigs/{*slug}", pigpage::request)
-        .route(PIG_PAGE, pigpage::request)
-        .route_redirect(APP_ROOT, "/pigs")
-        .build(state)
+impl PigWebClient {
+    /// The key used to access cached data for the Pig Web App
+    pub const APP_KEY: &'static str = "pigweb";
+
+    /// Called once before the first frame.
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        // Load previous app state (if any) or default state data
+        // Note that you must enable the `persistence` feature for this to work.
+        let mut res: PigWebClient =
+            cc.storage.and_then(|storage| eframe::get_value(storage, Self::APP_KEY)).unwrap_or_default();
+        res.state.colorix = style::set_styles(cc);
+        res
+    }
 }

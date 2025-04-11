@@ -54,7 +54,6 @@ impl Layout {
         ui.separator();
 
         // TODO only show pages you have access to
-        // TODO make these actually route
         ui.toggle_value(&mut true, " 🐖 Pigs ");
         ui.add_enabled(false, SelectableLabel::new(false, " 📄 Logs "));
         ui.add_enabled(false, SelectableLabel::new(false, " 😐 Users "));
