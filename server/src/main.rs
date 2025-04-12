@@ -11,11 +11,33 @@ use diesel::{Connection, PgConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use pigweb_common::{OpenIDAuth, AUTH_API_ROOT, PIG_API_ROOT};
 use rocket::fairing::AdHoc;
-use rocket::fs::FileServer;
+use rocket::fs::NamedFile;
+use rocket::response::status::NotFound;
+use rocket::State;
 use rocket_oauth2::{HyperRustlsAdapter, OAuth2};
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("data/migrations");
+
+/// Create a route for any url relative to the website root. If not found,
+/// redirect to index. Rank must be higher than the index route.
+/// from https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md
+#[get("/<path..>", rank = 1001)]
+async fn files(config: &State<Config>, path: PathBuf) -> Result<NamedFile, NotFound<String>> {
+    let path = PathBuf::from(&config.client_path).join(path);
+    match NamedFile::open(path).await {
+        Ok(f) => Ok(f),
+        Err(_) => index(config).await, // If no file is found, route to index
+    }
+}
+
+/// Serve the index file
+/// from https://theadventuresofaliceandbob.com/posts/rust_rocket_yew_part1.md
+#[get("/", rank = 1000)]
+async fn index(config: &State<Config>) -> Result<NamedFile, NotFound<String>> {
+    NamedFile::open(PathBuf::from(&config.client_path).join("index.html")).await.map_err(|e| NotFound(e.to_string()))
+}
 
 /// /api root path just to verify the backend is online
 #[get("/")]
@@ -37,7 +59,6 @@ async fn rocket() -> _ {
     // Load the config here for the db connection and client path
     let figment = Config::load_figment();
     let config = Config::load_from_figment(&figment);
-    let client_path = config.client_path.to_owned();
     let oidc_config = config.oidc.as_ref();
 
     // Init DB connection
@@ -54,7 +75,7 @@ async fn rocket() -> _ {
     let mut rocket = rocket::custom(figment)
         .manage(Mutex::new(db_connection))
         .attach(AdHoc::config::<Config>())
-        .mount("/", FileServer::from(client_path))
+        .mount("/", routes![index, files])
         .mount("/api", routes![api_root])
         .mount(AUTH_API_ROOT, get_auth_api_routes())
         .mount(PIG_API_ROOT, get_pig_api_routes());
