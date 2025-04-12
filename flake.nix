@@ -70,17 +70,6 @@
                     libGL
                     fontconfig
                 ];
-
-                # "this version must match EXACTLY the one defined in Cargo.lock"
-                # why tf do i have to *manually* define this?
-                wasm-bindgen-cli = pkgs.wasm-bindgen-cli.override {
-                    version = "0.2.93";
-                    # To find the hashes on a new version, set both to
-                    # pkgs.lib.fakeHash and run a build. The first hash you get
-                    # will be the hash. Run it again to get the cargoHash
-                    hash = "sha256-DDdu5mM3gneraM85pAepBXWn3TMofarVR4NbjMdz3r0=";
-                    cargoHash = "sha256-birrg+XABBHHKJxfTKAMSlmTVYLmnmqMDfRnmG6g/YQ=";
-                };
             };
 
             # Server-specific options
@@ -164,6 +153,39 @@
                     mv ./dist ..
                     cd ..
                 '';
+
+                # why tf do i have to *manually* define this?
+                #
+                # To find the hashes on a new version, set both to
+                # pkgs.lib.fakeHash and run a build. The first hash you get will
+                # be for src. Run it again to get the hash for cargoDeps
+                wasm-bindgen-cli = pkgs.buildWasmBindgenCli rec {
+                    src = pkgs.fetchCrate {
+                        pname = "wasm-bindgen-cli";
+                        hash = "sha256-3RJzK7mkYFrs7C/WkhW9Rr4LdP5ofb2FdYGz1P7Uxog=";
+                        #hash = pkgs.lib.fakeHash;
+
+                        # as per the docs: "this version must match EXACTLY the
+                        # one defined in Cargo.lock." this function sets the
+                        # version so i don't have to manually. it:
+                        #
+                        # - loads the "package" list from Cargo.lock
+                        # - finds the first package with the name "wasm-bindgen"
+                        #   defers to the attrset explicitly defined in the
+                        #   function call if not found
+                        # - get the version
+                        #
+                        # https://teu5us.github.io/nix-lib.html#lib.lists.findfirst
+                        version = (pkgs.lib.lists.findFirst (crate: crate.name == "wasm-bindgen") { version = "0.2.100"; } (pkgs.lib.importTOML ./Cargo.lock).package).version;
+                    };
+
+                    cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+                        inherit src;
+                        inherit (src) pname version;
+                        hash = "sha256-qsO12332HSjWCVKtf1cUePWWb9IdYUmT+8OPj/XP2WE=";
+                        #hash = pkgs.lib.fakeHash;
+                    };
+                };
             });
 
             packages.pigweb_server = craneLib.buildPackage (serverPkgArgs // {
