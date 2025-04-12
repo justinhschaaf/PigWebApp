@@ -15,6 +15,7 @@ egui_flex.workspace = true
 eframe.workspace = true
 ehttp.workspace = true
 form_urlencoded.workspace = true
+matchit.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_url_params.workspace = true

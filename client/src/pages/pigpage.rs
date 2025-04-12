@@ -10,6 +10,7 @@ use egui::{
 };
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
+use matchit::Params;
 use pigweb_common::pigs::{Pig, PigFetchQuery};
 use pigweb_common::users::Roles;
 use std::cmp::PartialEq;
@@ -83,7 +84,7 @@ impl Default for PigPage {
 }
 
 impl PageImpl for PigPage {
-    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState) {
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _params: &Params) {
         self.process_promises(state);
 
         SidePanel::left("left_panel").resizable(false).show(ui.ctx(), |ui| {
