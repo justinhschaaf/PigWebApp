@@ -60,6 +60,7 @@ async fn rocket() -> _ {
         .mount(PIG_API_ROOT, get_pig_api_routes());
 
     // Make sure OAuth2 uses custom config, if defined
+    // TODO add a warning if OIDC or Groups are not configured
     if let Some(oidc_config) = oidc_config {
         rocket =
             rocket.attach(OAuth2::<OpenIDAuth>::custom(HyperRustlsAdapter::default(), oidc_config.to_oauth_config()));

@@ -1,8 +1,10 @@
 use ehttp::{Credentials, Headers, Request, Response};
 use log::debug;
 use pigweb_common::pigs::{Pig, PigFetchQuery};
+use pigweb_common::users::Roles;
 use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;
@@ -145,7 +147,7 @@ impl Default for AuthApi {
     }
 }
 
-endpoint!(AuthCheckHandler, bool, bool, |_ignored: bool| {
+endpoint!(AuthCheckHandler, bool, Option<BTreeSet<Roles>>, |_ignored: bool| {
     let (tx, rx) = oneshot::channel();
 
     // Submit the request to the server
@@ -157,9 +159,12 @@ endpoint!(AuthCheckHandler, bool, bool, |_ignored: bool| {
 
     fetch_and_send(req, tx, |res| {
         if res.ok {
-            return Ok(true);
+            return res
+                .json::<BTreeSet<Roles>>() // try to parse response into JSON
+                .map(|roles| Some(roles)) // if JSON parsed successfully, turn it into an option
+                .map_err(|err| std::io::Error::from(err).into()); // return JSON parse error
         } else if res.status == 401 {
-            return Ok(false);
+            return Ok(None);
         }
 
         Err(res.json::<ApiError>().unwrap_or_else(|err| std::io::Error::from(err).into()))

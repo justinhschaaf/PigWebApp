@@ -5,17 +5,18 @@ use diesel::{
     ExpressionMethods, NullableExpressionMethods, PgConnection, QueryDsl, QueryResult, RunQueryDsl, SelectableHelper,
 };
 use jsonwebtoken::{DecodingKey, Validation};
-use pigweb_common::users::User;
+use pigweb_common::users::{Roles, User};
 use pigweb_common::{schema, OpenIDAuth, COOKIE_JWT, COOKIE_USER};
 use rocket::http::{Cookie, CookieJar, SameSite, Status};
 use rocket::outcome::try_outcome;
 use rocket::outcome::Outcome::{Error, Success};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
-use rocket::serde::json::serde_json;
+use rocket::serde::json::{serde_json, Json};
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{Request, Route, State};
 use rocket_oauth2::{OAuth2, TokenResponse};
+use std::collections::BTreeSet;
 use std::ops::DerefMut;
 use std::sync::Mutex;
 
@@ -29,6 +30,34 @@ impl AuthenticatedUser {
         cookies.remove_private(COOKIE_JWT);
         cookies.remove_private(COOKIE_USER);
         Error((Status::Unauthorized, ()))
+    }
+
+    pub fn has_role(&self, config: &Config, role: Roles) -> bool {
+        if config.oidc.is_none() || self.get_roles(config).contains(&role) {
+            return true;
+        }
+
+        false
+    }
+
+    pub fn get_roles(&self, config: &Config) -> BTreeSet<Roles> {
+        // If groups aren't configured, all users have all access
+        if config.oidc.is_none() || config.groups.is_empty() {
+            return Roles::values().collect::<BTreeSet<Roles>>();
+        }
+
+        let mut res = BTreeSet::new();
+
+        // for each group the user has
+        for group in &self.user.groups {
+            // try to find the roles in that group
+            if let Some(roles) = config.groups.get(group) {
+                // add the group's roles to the response
+                res.append(&mut roles.clone())
+            }
+        }
+
+        res
     }
 }
 
@@ -245,11 +274,9 @@ pub fn get_auth_api_routes() -> Vec<Route> {
 }
 
 #[get("/")]
-async fn is_authenticated(_user: AuthenticatedUser) -> &'static str {
+async fn is_authenticated(user: AuthenticatedUser, config: &State<Config>) -> Json<BTreeSet<Roles>> {
     // If the user isn't signed in, it should return a 401 unauthorized
-    "(◕_◕)
-
-you are signed in. yippee!"
+    Json(user.get_roles(config))
 }
 
 // Redirects users to the login page

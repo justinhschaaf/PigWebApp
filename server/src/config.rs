@@ -1,20 +1,22 @@
-use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-
+use pigweb_common::users::Roles;
 use rocket::figment::providers::{Env, Format, Serialized, Toml};
 use rocket::figment::Figment;
 use rocket_oauth2::{OAuthConfig, StaticProvider};
+use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub client_path: String,
     pub database: DatabaseConfig,
+    pub groups: BTreeMap<String, BTreeSet<Roles>>,
     pub oidc: Option<OpenIDConfig>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { client_path: "dist".to_owned(), database: Default::default(), oidc: None }
+        Config { client_path: "dist".to_owned(), database: Default::default(), groups: BTreeMap::new(), oidc: None }
     }
 }
 

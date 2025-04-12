@@ -11,6 +11,7 @@ use egui::{
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
 use pigweb_common::pigs::{Pig, PigFetchQuery};
+use pigweb_common::users::Roles;
 use std::cmp::PartialEq;
 use std::mem;
 
@@ -86,7 +87,7 @@ impl PageImpl for PigPage {
         self.process_promises(state);
 
         SidePanel::left("left_panel").resizable(false).show(ui.ctx(), |ui| {
-            self.populate_sidebar(ui);
+            self.populate_sidebar(ui, state);
         });
 
         CentralPanel::default().show(ui.ctx(), |ui| {
@@ -110,7 +111,7 @@ impl PigPage {
             }
             Status::Errored(err) => {
                 if err.code == Some(401) {
-                    state.authenticated = false;
+                    state.authorized = None;
                 } else {
                     state.display_error = Some(err);
                 }
@@ -125,7 +126,7 @@ impl PigPage {
             }
             Status::Errored(err) => {
                 if err.code == Some(401) {
-                    state.authenticated = false;
+                    state.authorized = None;
                 } else {
                     state.display_error = Some(err);
                 }
@@ -141,7 +142,7 @@ impl PigPage {
             }
             Status::Errored(err) => {
                 if err.code == Some(401) {
-                    state.authenticated = false;
+                    state.authorized = None;
                 } else {
                     state.display_error = Some(err);
                 }
@@ -153,7 +154,7 @@ impl PigPage {
             Status::Received(pigs) => self.query_results = Some(pigs),
             Status::Errored(err) => {
                 if err.code == Some(401) {
-                    state.authenticated = false;
+                    state.authorized = None;
                 } else {
                     state.display_error = Some(err);
                 }
@@ -162,7 +163,7 @@ impl PigPage {
         }
     }
 
-    fn populate_sidebar(&mut self, ui: &mut Ui) {
+    fn populate_sidebar(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.set_width(320.0);
         ui.add_space(8.0);
         ui.heading("The Pig List");
@@ -174,8 +175,10 @@ impl PigPage {
                 self.do_query();
             }
 
-            // Pig create button, it's only enabled when you have something in the search bar
-            ui.add_enabled_ui(!self.query.is_empty(), |ui| {
+            // Pig create button, it's only enabled when you have something in
+            // the search bar and when you have permissions
+            let can_add = state.has_role(Roles::PigEditor) && !self.query.is_empty();
+            ui.add_enabled_ui(can_add, |ui| {
                 if ui.button("+ Add").clicked() {
                     // We need to save the name here or else borrow check complains
                     let name = self.query.to_owned();
@@ -237,6 +240,7 @@ impl PigPage {
     fn populate_center(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.set_max_width(540.0);
         state.colorix.draw_background(ui.ctx(), false);
+        let can_edit = state.has_role(Roles::PigEditor);
 
         // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
         if let Some(pig) = self.selection.as_mut() {
@@ -246,21 +250,23 @@ impl PigPage {
             ui.add_space(8.0);
 
             // Pig action buttons
-            Flex::horizontal().w_full().justify(FlexJustify::SpaceBetween).show(ui, |flex| {
-                let save_button = Button::new("💾 Save");
-                let delete_button = Button::new("🗑 Delete");
+            if can_edit {
+                Flex::horizontal().w_full().justify(FlexJustify::SpaceBetween).show(ui, |flex| {
+                    let save_button = Button::new("💾 Save");
+                    let delete_button = Button::new("🗑 Delete");
 
-                // TODO set as disabled again when not dirty. we just have to live with this until https://github.com/lucasmerlin/hello_egui/pull/50 is done
-                if flex.add(item().grow(1.0), save_button).clicked() {
-                    self.pig_api.update.request(pig);
-                }
+                    // TODO set as disabled again when not dirty. we just have to live with this until https://github.com/lucasmerlin/hello_egui/pull/50 is done
+                    if flex.add(item().grow(1.0), save_button).clicked() {
+                        self.pig_api.update.request(pig);
+                    }
 
-                if flex.add(item().grow(1.0), delete_button).clicked() {
-                    self.delete_modal = true;
-                }
-            });
+                    if flex.add(item().grow(1.0), delete_button).clicked() {
+                        self.delete_modal = true;
+                    }
+                });
 
-            ui.add_space(4.0);
+                ui.add_space(4.0);
+            }
 
             egui_extras::TableBuilder::new(ui)
                 .striped(true)
@@ -298,7 +304,7 @@ impl PigPage {
                                     .desired_rows(4)
                                     .layouter(&mut wrapped_singleline_layouter);
 
-                                if te.show(ui).response.changed() {
+                                if ui.add_enabled(can_edit, te).changed() {
                                     self.dirty = true;
                                 }
                             });

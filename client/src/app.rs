@@ -4,6 +4,7 @@ use crate::pages::pigpage::PigPage;
 use crate::pages::{Page, PageImpl};
 use crate::style;
 use egui::Context;
+use pigweb_common::users::Roles;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 // TODO figure out whether we really need to save any state or if it's better to just reset
@@ -32,7 +33,11 @@ impl eframe::App for PigWebClient {
 
             // Then show the current route
             match &mut self.page {
-                Page::Pigs(page) => page.ui(ui, &mut self.state),
+                Page::Pigs(page) => {
+                    if self.state.has_role(Roles::PigViewer) {
+                        page.ui(ui, &mut self.state);
+                    }
+                }
                 _ => {}
             }
         });

@@ -3,6 +3,7 @@ use crate::data::state::ClientState;
 use crate::modal::Modal;
 use eframe::emath::Align;
 use egui::{menu, Context, OpenUrl, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
+use pigweb_common::users::Roles;
 use pigweb_common::{yuri, AUTH_API_ROOT};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -39,7 +40,7 @@ impl Layout {
 
     fn process_promises(state: &mut ClientState) {
         match state.layout.auth_api.is_authenticated.resolve() {
-            Status::Received(authenticated) => state.authenticated = authenticated,
+            Status::Received(authorized) => state.authorized = authorized,
             Status::Errored(err) => state.display_error = Some(err),
             Status::Pending => {}
         }
@@ -53,15 +54,36 @@ impl Layout {
 
         ui.separator();
 
-        // TODO only show pages you have access to
-        ui.toggle_value(&mut true, " 🐖 Pigs ");
-        ui.add_enabled(false, SelectableLabel::new(false, " 📄 Logs "));
-        ui.add_enabled(false, SelectableLabel::new(false, " 😐 Users "));
-        ui.add_enabled(false, SelectableLabel::new(false, " ⛭ System "));
+        // attention to detail: if the user doesn't have access to any pages and
+        // debug is enabled, there will be two separators with an awkward gap
+        // between them. this will remove the second separator if no pages are
+        // allowed
+        let mut show_second_separator = false;
+
+        // TODO make these actually change the page if it's needed
+        if state.has_role(Roles::PigViewer) {
+            ui.toggle_value(&mut true, " 🐖 Pigs ");
+            show_second_separator = true;
+        }
+        if state.has_role(Roles::BulkEditor) {
+            ui.add_enabled(false, SelectableLabel::new(false, " 📥 Import "));
+            show_second_separator = true;
+        }
+        if state.has_role(Roles::LogViewer) {
+            ui.add_enabled(false, SelectableLabel::new(false, " 📄 Logs "));
+            show_second_separator = true;
+        }
+        if state.has_role(Roles::UserViewer) {
+            ui.add_enabled(false, SelectableLabel::new(false, " 😐 Users "));
+            show_second_separator = true;
+        }
+        //ui.add_enabled(false, SelectableLabel::new(false, " ⛭ System "));
 
         // Show debug warning
         if cfg!(debug_assertions) {
-            ui.separator();
+            if show_second_separator {
+                ui.separator();
+            }
             egui::warn_if_debug_build(ui);
         }
 
@@ -82,7 +104,7 @@ impl Layout {
     }
 
     fn show_modals(ctx: &Context, state: &mut ClientState) {
-        if !state.authenticated {
+        if state.authorized.is_none() {
             let modal = Modal::new("Login")
                 .with_body("You need to login or renew your session to continue.")
                 .cancellable(false)

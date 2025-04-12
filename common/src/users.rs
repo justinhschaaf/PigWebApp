@@ -48,3 +48,31 @@ impl User {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Roles {
+    PigViewer,
+    PigEditor,
+    BulkEditor,
+    BulkAdmin,
+    UserViewer,
+    UserAdmin,
+    LogViewer,
+}
+
+impl Roles {
+    // https://stackoverflow.com/a/21376984
+    pub fn values() -> impl Iterator<Item = Roles> {
+        [
+            Self::PigViewer,
+            Self::PigEditor,
+            Self::BulkEditor,
+            Self::BulkAdmin,
+            Self::UserViewer,
+            Self::UserAdmin,
+            Self::LogViewer,
+        ]
+        .iter()
+        .copied()
+    }
+}

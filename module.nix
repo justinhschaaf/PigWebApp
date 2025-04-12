@@ -22,10 +22,35 @@ in {
             '';
             type = lib.types.submodule {
                 freeformType = format.type;
-                options.port = lib.mkOption {
-                    type = lib.types.port;
-                    default = 8000;
-                    description = "Port to serve on.";
+                options = {
+                    port = lib.mkOption {
+                        type = lib.types.port;
+                        default = 8000;
+                        description = "Port to serve on.";
+                    };
+                    groups = lib.mkOption {
+                        type = lib.types.attrsOf lib.types.listOf lib.types.enum [
+                            "PigViewer"
+                            "PigEditor"
+                            "BulkEditor"
+                            "BulkAdmin"
+                            "UserViewer"
+                            "UserAdmin"
+                            "LogViewer"
+                        ];
+                        default = {};
+                        description = ''
+                            The permission groups the server should recognize.
+
+                            The server will read each user's groups when signing
+                            in with OIDC and grant the corresponding roles
+                            defined in each group here.
+                        '';
+                        example = {
+                            user = [ "PigViewer" "PigEditor" "BulkEditor" ];
+                            admin = [ "BulkAdmin" "UserViewer" "UserAdmin" "LogViewer" ];
+                        };
+                    };
                 };
             };
         };

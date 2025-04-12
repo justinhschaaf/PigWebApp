@@ -1,8 +1,10 @@
 use crate::auth::AuthenticatedUser;
+use crate::config::Config;
 use diesel::{ExpressionMethods, PgConnection, PgTextExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use diesel_full_text_search::{plainto_tsquery, to_tsvector, TsVectorExtensions};
 use pigweb_common::pigs::{Pig, PigFetchQuery};
 use pigweb_common::schema;
+use pigweb_common::users::Roles;
 use rocket::http::Status;
 use rocket::response::status::Created;
 use rocket::serde::json::Json;
@@ -19,12 +21,16 @@ pub fn get_pig_api_routes() -> Vec<Route> {
 #[post("/create?<name>")]
 async fn api_pig_create(
     auth_user: AuthenticatedUser,
+    config: &State<Config>,
     db_connection: &State<Mutex<PgConnection>>,
     name: &str,
 ) -> Result<Created<Json<Pig>>, Status> {
-    // TODO deduplicate uuids and names
+    if !auth_user.has_role(config, Roles::PigEditor) {
+        return Err(Status::Forbidden);
+    }
 
     // Create the new pig
+    // TODO deduplicate uuids and names
     let pig = Pig::new(name, auth_user.user.id.as_ref());
 
     // Save it to the DB
@@ -43,10 +49,15 @@ async fn api_pig_create(
 
 #[put("/update", data = "<pig>")]
 async fn api_pig_update(
-    _auth_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
+    config: &State<Config>,
     db_connection: &State<Mutex<PgConnection>>,
     pig: Json<Pig>,
 ) -> Result<Json<Pig>, Status> {
+    if !auth_user.has_role(config, Roles::PigEditor) {
+        return Err(Status::Forbidden);
+    }
+
     let pig = pig.into_inner();
     let mut db_connection = db_connection.lock().unwrap();
 
@@ -63,7 +74,16 @@ async fn api_pig_update(
 }
 
 #[delete("/delete?<id>")]
-async fn api_pig_delete(_auth_user: AuthenticatedUser, db_connection: &State<Mutex<PgConnection>>, id: &str) -> Status {
+async fn api_pig_delete(
+    auth_user: AuthenticatedUser,
+    config: &State<Config>,
+    db_connection: &State<Mutex<PgConnection>>,
+    id: &str,
+) -> Status {
+    if !auth_user.has_role(config, Roles::PigEditor) {
+        return Status::Forbidden;
+    }
+
     let uuid = match Uuid::from_str(id) {
         Ok(i) => i,
         Err(e) => {
@@ -86,10 +106,15 @@ async fn api_pig_delete(_auth_user: AuthenticatedUser, db_connection: &State<Mut
 
 #[get("/fetch?<query..>")]
 async fn api_pig_fetch(
-    _auth_user: AuthenticatedUser,
+    auth_user: AuthenticatedUser,
+    config: &State<Config>,
     db_connection: &State<Mutex<PgConnection>>,
     query: PigFetchQuery,
 ) -> Result<Json<Vec<Pig>>, Status> {
+    if !auth_user.has_role(config, Roles::PigViewer) {
+        return Err(Status::Forbidden);
+    }
+
     let mut ids: Option<Vec<Uuid>> = None;
     let mut limit = PigFetchQuery::get_default_limit();
 

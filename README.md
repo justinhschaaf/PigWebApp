@@ -15,7 +15,7 @@ server-side, as Pocketbase doesn't support serverside functions.
 
 - [x] **Client and Server modules written in Rust.** Shared code and data structures should be in a Common module.
 - [x] **[CRUD](https://en.wikipedia.org/wiki/Create%2C_read%2C_update_and_delete) pig names.**
-- [ ] **[RBAC](https://en.wikipedia.org/wiki/Role-based_access_control) to allow different levels of access.** You
+- [x] **[RBAC](https://en.wikipedia.org/wiki/Role-based_access_control) to allow different levels of access.** You
   should also be able to configure groups for assigning these roles to users.
 - [x] **[OIDC](https://en.wikipedia.org/wiki/OpenID#OpenID_Connect_(OIDC)) authentication, the app should not manage
   authentication.** It should, however, be able to read user groups from OIDC user info and manage users' groups through
