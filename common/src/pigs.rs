@@ -53,7 +53,7 @@ impl Pig {
 // https://stackoverflow.com/a/42551386
 #[derive(Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "server", derive(rocket::FromForm))]
-pub struct PigFetchQuery {
+pub struct PigQuery {
     // NOTE: all of these MUST be options or else Rocket won't recognize the query params
     pub id: Option<Vec<String>>,
     pub name: Option<String>,
@@ -61,13 +61,13 @@ pub struct PigFetchQuery {
     pub offset: Option<u32>,
 }
 
-impl Default for PigFetchQuery {
+impl Default for PigQuery {
     fn default() -> Self {
         Self { id: None, name: None, limit: Some(DEFAULT_API_RESPONSE_LIMIT), offset: Some(0) }
     }
 }
 
-impl PigFetchQuery {
+impl PigQuery {
     pub fn with_id(self, id: &Uuid) -> Self {
         self.with_ids(vec![id.to_owned()])
     }

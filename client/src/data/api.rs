@@ -1,6 +1,6 @@
 use ehttp::{Credentials, Headers, Request, Response};
 use log::debug;
-use pigweb_common::pigs::{Pig, PigFetchQuery};
+use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
 use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT};
 use serde::{Deserialize, Serialize};
@@ -278,7 +278,7 @@ endpoint!(PigDeleteHandler, Uuid, Response, |input: Uuid| {
     rx
 });
 
-endpoint!(PigFetchHandler, PigFetchQuery, Vec<Pig>, |params: PigFetchQuery| {
+endpoint!(PigFetchHandler, PigQuery, Vec<Pig>, |params: PigQuery| {
     let (tx, rx) = oneshot::channel();
 
     // Submit the request to the server

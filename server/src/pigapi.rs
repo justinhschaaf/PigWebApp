@@ -2,7 +2,7 @@ use crate::auth::AuthenticatedUser;
 use crate::config::Config;
 use diesel::{ExpressionMethods, PgConnection, PgTextExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use diesel_full_text_search::{plainto_tsquery, to_tsvector, TsVectorExtensions};
-use pigweb_common::pigs::{Pig, PigFetchQuery};
+use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
 use pigweb_common::{parse_uuid, parse_uuids, schema, DEFAULT_API_RESPONSE_LIMIT};
 use rocket::http::Status;
@@ -38,7 +38,7 @@ async fn api_pig_create(
 
     if sql_res.is_ok() {
         // Respond with a path to the pig and the object itself, unfortunately the location path is mandatory
-        let params = PigFetchQuery { id: Some(Vec::from([pig.id.to_string()])), ..Default::default() };
+        let params = PigQuery { id: Some(Vec::from([pig.id.to_string()])), ..Default::default() };
         Ok(Created::new(params.to_yuri()).body(Json(pig)))
     } else {
         error!("Unable to save new pig {:?}: {:?}", pig, sql_res.unwrap_err());
@@ -102,7 +102,7 @@ async fn api_pig_fetch(
     auth_user: AuthenticatedUser,
     config: &State<Config>,
     db_connection: &State<Mutex<PgConnection>>,
-    query: PigFetchQuery,
+    query: PigQuery,
 ) -> Result<Json<Vec<Pig>>, Status> {
     if !auth_user.has_role(config, Roles::PigViewer) {
         return Err(Status::Forbidden);

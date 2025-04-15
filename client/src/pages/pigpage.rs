@@ -11,7 +11,7 @@ use egui::{
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
 use matchit::Params;
-use pigweb_common::pigs::{Pig, PigFetchQuery};
+use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
 use std::cmp::PartialEq;
 use std::mem;
@@ -365,7 +365,7 @@ impl PigPage {
     /// the list of current results
     fn do_query(&mut self) {
         self.query_results = None;
-        self.pig_api.fetch.request(PigFetchQuery::default().with_name(&self.query));
+        self.pig_api.fetch.request(PigQuery::default().with_name(&self.query));
     }
 
     /// If the dirty var is true, warn the user with a modal before performing
