@@ -1,7 +1,7 @@
 use crate::auth::AuthenticatedUser;
 use crate::config::Config;
 use chrono::Utc;
-use diesel::{ExpressionMethods, PgConnection, RunQueryDsl};
+use diesel::{ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
 use pigweb_common::users::{Roles, User, UserFetchResponse, UserQuery};
 use pigweb_common::{parse_uuid, schema};
 use rocket::http::Status;
@@ -26,7 +26,7 @@ async fn api_user_fetch(
     // Fetch the users from the DB
     let sql_query = query.to_db_select();
     let mut db_connection = db_connection.lock().unwrap();
-    let sql_res = sql_query.load::<User>(db_connection.deref_mut());
+    let sql_res = sql_query.select(User::as_select()).load(db_connection.deref_mut());
 
     if let Ok(users) = sql_res {
         let mut ids_to_names: BTreeMap<Uuid, String> = BTreeMap::new();
@@ -64,7 +64,7 @@ async fn api_user_roles(
     // Fetch the users from the DB
     let sql_query = query.to_db_select();
     let mut db_connection = db_connection.lock().unwrap();
-    let sql_res = sql_query.load::<User>(db_connection.deref_mut());
+    let sql_res = sql_query.select(User::as_select()).load(db_connection.deref_mut());
 
     if let Ok(users) = sql_res {
         let mut res: BTreeMap<Uuid, BTreeSet<Roles>> = BTreeMap::new();

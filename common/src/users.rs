@@ -1,3 +1,4 @@
+use crate::{query, yuri, DEFAULT_API_RESPONSE_LIMIT, USER_API_ROOT};
 use chrono::{NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::borrow::ToOwned;
@@ -5,16 +6,13 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 #[cfg(feature = "server")]
-use crate::schema;
-use diesel::helper_types::IntoBoxed;
-use diesel::pg::Pg;
-#[cfg(feature = "server")]
-use diesel::*;
-#[cfg(feature = "server")]
-use diesel_full_text_search::*;
+use {crate::schema, diesel::*, diesel_full_text_search::*};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "server", derive(AsChangeset, Identifiable, Insertable, Queryable, Selectable))]
+#[cfg_attr(
+    feature = "server",
+    derive(diesel::AsChangeset, diesel::Identifiable, diesel::Insertable, diesel::Queryable, diesel::Selectable)
+)]
 #[cfg_attr(feature = "server", diesel(table_name = crate::schema::users))]
 #[cfg_attr(feature = "server", diesel(check_for_backend(diesel::pg::Pg)))]
 pub struct User {
@@ -67,16 +65,52 @@ pub struct UserQuery {
 
 impl Default for UserQuery {
     fn default() -> Self {
-        Self { id: None, username: None, limit: Some(100), offset: Some(0) }
+        Self { id: None, username: None, limit: Some(DEFAULT_API_RESPONSE_LIMIT), offset: Some(0) }
     }
 }
 
 impl UserQuery {
+    pub fn with_id(self, id: &Uuid) -> Self {
+        self.with_ids(vec![id.to_owned()])
+    }
+
+    pub fn with_id_string(self, id: &String) -> Self {
+        self.with_ids_string(vec![id.to_owned()])
+    }
+
+    pub fn with_ids(self, ids: Vec<Uuid>) -> Self {
+        self.with_ids_string(ids.iter().map(|e| e.to_string()).collect())
+    }
+
+    pub fn with_ids_string(mut self, ids: Vec<String>) -> Self {
+        self.id = Some(ids);
+        self
+    }
+
+    pub fn with_username(mut self, username: &String) -> Self {
+        self.username = Some(username.to_owned());
+        self
+    }
+
+    pub fn with_limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    pub fn with_offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    pub fn to_yuri(&self) -> String {
+        yuri!(USER_API_ROOT, "fetch" ;? query!(self))
+    }
+
     /// Converts user query params to DB query
     #[cfg(feature = "server")]
     #[dsl::auto_type(no_type_alias)]
     pub fn to_db_select(&self) -> _ {
-        let mut res: IntoBoxed<schema::users::table, Pg> = schema::users::table.into_boxed();
+        let mut res: helper_types::IntoBoxed<schema::users::table, pg::Pg> = schema::users::table.into_boxed();
 
         // Filter by name, if specified
         if let Some(ref username) = self.username {
@@ -93,9 +127,7 @@ impl UserQuery {
         }
 
         // Set the limit, if present
-        if let Some(l) = self.limit {
-            res = res.limit(l as i64);
-        }
+        res = res.limit(self.limit.unwrap_or_else(|| DEFAULT_API_RESPONSE_LIMIT) as i64);
 
         // Set the offset, if present
         if let Some(offset) = self.offset {
