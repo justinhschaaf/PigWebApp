@@ -2539,6 +2539,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "diesel",
+ "diesel_full_text_search",
  "form_urlencoded",
  "rocket",
  "rocket_oauth2",

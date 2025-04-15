@@ -3,14 +3,13 @@ use crate::config::Config;
 use diesel::{ExpressionMethods, PgConnection, PgTextExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
 use diesel_full_text_search::{plainto_tsquery, to_tsvector, TsVectorExtensions};
 use pigweb_common::pigs::{Pig, PigFetchQuery};
-use pigweb_common::schema;
 use pigweb_common::users::Roles;
+use pigweb_common::{parse_uuid, parse_uuids, schema, DEFAULT_API_RESPONSE_LIMIT};
 use rocket::http::Status;
 use rocket::response::status::Created;
 use rocket::serde::json::Json;
 use rocket::{Route, State};
 use std::ops::DerefMut;
-use std::str::FromStr;
 use std::sync::Mutex;
 use uuid::Uuid;
 
@@ -79,28 +78,22 @@ async fn api_pig_delete(
     config: &State<Config>,
     db_connection: &State<Mutex<PgConnection>>,
     id: &str,
-) -> Status {
+) -> Result<Status, Status> {
     if !auth_user.has_role(config, Roles::PigEditor) {
-        return Status::Forbidden;
+        return Err(Status::Forbidden);
     }
 
-    let uuid = match Uuid::from_str(id) {
-        Ok(i) => i,
-        Err(e) => {
-            error!("Unable to parse UUID: {:?}", e);
-            return Status::BadRequest;
-        }
-    };
+    let uuid = parse_uuid(id)?;
 
     let mut db_connection = db_connection.lock().unwrap();
     let sql_res =
         diesel::delete(schema::pigs::table.filter(schema::pigs::id.eq(uuid))).execute(db_connection.deref_mut());
 
     if sql_res.is_ok() {
-        Status::NoContent
+        Ok(Status::NoContent)
     } else {
         error!("Unable to delete pig {:?}: {:?}", id, sql_res.unwrap_err());
-        Status::InternalServerError
+        Err(Status::InternalServerError)
     }
 }
 
@@ -115,20 +108,9 @@ async fn api_pig_fetch(
         return Err(Status::Forbidden);
     }
 
-    let mut ids: Option<Vec<Uuid>> = None;
-    let mut limit = PigFetchQuery::get_default_limit();
-
     // Convert IDs to UUIDs, if present
-    // https://stackoverflow.com/a/16756324
-    if let Some(ref id) = query.id {
-        match id.iter().map(|e| uuid::Uuid::from_str(e.as_str())).collect() {
-            Ok(i) => ids = Some(i),
-            Err(e) => {
-                error!("Unable to parse UUID: {:?}", e);
-                return Err(Status::BadRequest);
-            }
-        }
-    }
+    let ids: Option<Vec<Uuid>> = query.id.as_ref().and_then(|ids| parse_uuids(&ids).ok());
+    let mut limit = DEFAULT_API_RESPONSE_LIMIT;
 
     // Start constructing the SQL query
     let mut sql_query = schema::pigs::table.into_boxed();

@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::userapi::{get_user_roles, user_has_role};
 use chrono::{DateTime, Utc};
 use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{
@@ -33,31 +34,11 @@ impl AuthenticatedUser {
     }
 
     pub fn has_role(&self, config: &Config, role: Roles) -> bool {
-        if config.oidc.is_none() || self.get_roles(config).contains(&role) {
-            return true;
-        }
-
-        false
+        user_has_role(config, &self.user, role)
     }
 
     pub fn get_roles(&self, config: &Config) -> BTreeSet<Roles> {
-        // If groups aren't configured, all users have all access
-        if config.oidc.is_none() || config.groups.is_empty() {
-            return Roles::values().collect::<BTreeSet<Roles>>();
-        }
-
-        let mut res = BTreeSet::new();
-
-        // for each group the user has
-        for group in &self.user.groups {
-            // try to find the roles in that group
-            if let Some(roles) = config.groups.get(group) {
-                // add the group's roles to the response
-                res.append(&mut roles.clone())
-            }
-        }
-
-        res
+        get_user_roles(config, &self.user)
     }
 }
 
@@ -364,6 +345,8 @@ async fn oidc_logout(config: &State<Config>, cookies: &CookieJar<'_>) -> Redirec
     // Remove the current JWT and USER cookies
     cookies.remove_private(COOKIE_JWT);
     cookies.remove_private(COOKIE_USER);
+
+    // TODO update session exp in db?
 
     // Redirect the user to the OIDC provider logout page, if present
     // we have to save the is_some boolean or else rust complains about using config

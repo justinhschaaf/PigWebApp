@@ -1,4 +1,4 @@
-use crate::{query, yuri, PIG_API_ROOT};
+use crate::{query, yuri, DEFAULT_API_RESPONSE_LIMIT, PIG_API_ROOT};
 use chrono::{NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -63,15 +63,11 @@ pub struct PigFetchQuery {
 
 impl Default for PigFetchQuery {
     fn default() -> Self {
-        Self { id: None, name: None, limit: Some(Self::get_default_limit()), offset: Some(0) }
+        Self { id: None, name: None, limit: Some(DEFAULT_API_RESPONSE_LIMIT), offset: Some(0) }
     }
 }
 
 impl PigFetchQuery {
-    pub fn get_default_limit() -> u32 {
-        100
-    }
-
     pub fn with_id(self, id: &Uuid) -> Self {
         self.with_ids(vec![id.to_owned()])
     }
