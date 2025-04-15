@@ -4,10 +4,13 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[cfg(feature = "server")]
-use diesel::{AsChangeset, Identifiable, Insertable, Queryable, Selectable};
+use {crate::schema, diesel::*, diesel_full_text_search::*};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "server", derive(AsChangeset, Identifiable, Insertable, Queryable, Selectable))]
+#[cfg_attr(
+    feature = "server",
+    derive(diesel::AsChangeset, diesel::Identifiable, diesel::Insertable, diesel::Queryable, diesel::Selectable)
+)]
 #[cfg_attr(feature = "server", diesel(table_name = crate::schema::pigs))]
 #[cfg_attr(feature = "server", diesel(check_for_backend(diesel::pg::Pg)))]
 #[cfg_attr(feature = "server", diesel(treat_none_as_null = true))]
@@ -102,5 +105,38 @@ impl PigQuery {
 
     pub fn to_yuri(&self) -> String {
         yuri!(PIG_API_ROOT, "fetch" ;? query!(self))
+    }
+
+    /// Converts user query params to DB query
+    #[cfg(feature = "server")]
+    #[dsl::auto_type(no_type_alias)]
+    pub fn to_db_select(&self) -> _ {
+        let mut res: helper_types::IntoBoxed<schema::pigs::table, pg::Pg> = schema::pigs::table.into_boxed();
+
+        // Filter by name, if specified
+        if let Some(ref query_name) = self.name {
+            // This performs a full text search
+            // https://www.slingacademy.com/article/implementing-fuzzy-search-with-postgresql-full-text-search/?#implementing-fuzzy-matching-with-fts
+            res = res
+                .filter(to_tsvector(schema::pigs::name).matches(plainto_tsquery(query_name)))
+                .or_filter(schema::pigs::name.ilike(format!("%{}%", query_name)));
+        }
+
+        // Filter by id, if specified
+        if let Some(query_ids) = self.id.as_ref().and_then(|ids| crate::parse_uuids(ids).ok()) {
+            res = res.filter(schema::pigs::id.eq_any(query_ids));
+        }
+
+        // Set the limit, if present
+        res = res.limit(self.limit.unwrap_or_else(|| DEFAULT_API_RESPONSE_LIMIT) as i64);
+
+        // Set the offset, if present
+        if let Some(offset) = self.offset {
+            if offset > 0 {
+                res = res.offset(offset as i64);
+            }
+        }
+
+        res
     }
 }

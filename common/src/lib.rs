@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 pub mod pigs;
 pub mod users;
 pub mod yuri;
@@ -18,6 +16,8 @@ pub const USER_API_ROOT: &str = "/api/users/";
 
 #[cfg(feature = "server")]
 pub const COOKIE_JWT: &str = "pigweb_jwt";
+
+#[cfg(feature = "server")]
 pub const COOKIE_USER: &str = "pigweb_user";
 
 pub const DEFAULT_API_RESPONSE_LIMIT: u32 = 100;
@@ -29,6 +29,7 @@ pub struct OpenIDAuth;
 
 #[cfg(feature = "server")]
 pub fn parse_uuid(string: &str) -> Result<uuid::Uuid, rocket::http::Status> {
+    use std::str::FromStr;
     match uuid::Uuid::from_str(string) {
         Ok(i) => Ok(i),
         Err(e) => {
@@ -40,6 +41,7 @@ pub fn parse_uuid(string: &str) -> Result<uuid::Uuid, rocket::http::Status> {
 
 #[cfg(feature = "server")]
 pub fn parse_uuids(strings: &Vec<String>) -> Result<Vec<uuid::Uuid>, rocket::http::Status> {
+    use std::str::FromStr;
     // https://stackoverflow.com/a/16756324
     match strings.iter().map(|e| uuid::Uuid::from_str(e.as_str())).collect() {
         Ok(i) => Ok(i),

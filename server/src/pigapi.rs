@@ -1,17 +1,15 @@
 use crate::auth::AuthenticatedUser;
 use crate::config::Config;
-use diesel::{ExpressionMethods, PgConnection, PgTextExpressionMethods, QueryDsl, RunQueryDsl, SelectableHelper};
-use diesel_full_text_search::{plainto_tsquery, to_tsvector, TsVectorExtensions};
+use diesel::{ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
-use pigweb_common::{parse_uuid, parse_uuids, schema, DEFAULT_API_RESPONSE_LIMIT};
+use pigweb_common::{parse_uuid, schema};
 use rocket::http::Status;
 use rocket::response::status::Created;
 use rocket::serde::json::Json;
 use rocket::{Route, State};
 use std::ops::DerefMut;
 use std::sync::Mutex;
-use uuid::Uuid;
 
 pub fn get_pig_api_routes() -> Vec<Route> {
     routes![api_pig_create, api_pig_update, api_pig_delete, api_pig_fetch]
@@ -108,42 +106,10 @@ async fn api_pig_fetch(
         return Err(Status::Forbidden);
     }
 
-    // Convert IDs to UUIDs, if present
-    let ids: Option<Vec<Uuid>> = query.id.as_ref().and_then(|ids| parse_uuids(&ids).ok());
-    let mut limit = DEFAULT_API_RESPONSE_LIMIT;
-
-    // Start constructing the SQL query
-    let mut sql_query = schema::pigs::table.into_boxed();
-
-    // Filter by name, if specified
-    if let Some(ref query_name) = query.name {
-        // This performs a full text search
-        // https://www.slingacademy.com/article/implementing-fuzzy-search-with-postgresql-full-text-search/?#implementing-fuzzy-matching-with-fts
-        sql_query = sql_query
-            .filter(to_tsvector(schema::pigs::name).matches(plainto_tsquery(query_name)))
-            .or_filter(schema::pigs::name.ilike(format!("%{}%", query_name)));
-    }
-
-    // Filter by id, if specified
-    if let Some(query_ids) = ids {
-        sql_query = sql_query.filter(schema::pigs::id.eq_any(query_ids));
-    }
-
-    // Set the limit, if present
-    if let Some(l) = query.limit {
-        limit = l;
-    }
-
-    // Set the offset, if present
-    if let Some(offset) = query.offset {
-        if offset > 0 {
-            sql_query = sql_query.offset(offset as i64);
-        }
-    }
-
-    // Set the limit and submit the query to the DB
+    // Construct the SQL query and submit it to the DB
+    let sql_query = query.to_db_select();
     let mut db_connection = db_connection.lock().unwrap();
-    let sql_res = sql_query.limit(limit as i64).select(Pig::as_select()).load(db_connection.deref_mut());
+    let sql_res = sql_query.select(Pig::as_select()).load(db_connection.deref_mut());
 
     if sql_res.is_ok() {
         Ok(Json(sql_res.unwrap()))
