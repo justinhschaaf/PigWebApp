@@ -1,31 +1,44 @@
 use crate::data::state::ClientState;
-use crate::pages::layout::Layout;
-use crate::pages::pigpage::PigPage;
-use crate::pages::{PageImpl, Pages, Routes};
+use crate::pages::layout::LayoutRender;
+use crate::pages::pigpage::PigPageRender;
+use crate::pages::{RenderPage, Routes};
 use crate::style;
 use egui::Context;
 use matchit::Router;
-use pigweb_common::users::Roles;
+use std::mem;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
-// TODO figure out whether we really need to save any state or if it's better to just reset
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct PigWebClient {
     /// Global app info
     state: ClientState,
 
-    /// The currently open page
-    page: Pages,
+    /// The current route
+    route: Routes,
 
     /// The page router
     #[serde(skip)]
     router: Router<Routes>,
+
+    #[serde(skip)]
+    /// The layout renderer
+    layout: LayoutRender,
+
+    /// The currently open page renderer
+    #[serde(skip)]
+    page_render: Box<dyn RenderPage>,
 }
 
 impl Default for PigWebClient {
     fn default() -> Self {
-        Self { state: ClientState::default(), page: Pages::Pigs(PigPage::default()), router: Router::new() }
+        Self {
+            state: ClientState::default(),
+            route: Routes::Pigs,
+            router: Router::new(),
+            layout: LayoutRender::default(),
+            page_render: Box::new(PigPageRender::default()),
+        }
     }
 }
 
@@ -34,23 +47,22 @@ impl eframe::App for PigWebClient {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             // Show the global layout first
-            Layout::ui(ui, &mut self.state);
+            self.layout.ui(ui, &mut self.state, None);
 
             // Then show the current route
             // TODO actually get the URL path
-            // TODO there's gotta be a better way to define these
             if let Ok(route) = &self.router.at("/pigs") {
-                match route.value {
-                    Routes::Pigs => {
-                        if !matches!(self.page, Pages::Pigs(_)) {
-                            self.page = Pages::Pigs(PigPage::default());
-                        }
+                // If the route has changed, update the state to reflect it
+                if mem::discriminant(route.value) != mem::discriminant(&self.route) {
+                    self.route = route.value.clone();
+                    self.page_render = self.route.get_renderer();
 
-                        if self.state.has_role(Roles::PigViewer) {
-                            self.page.data().ui(ui, &mut self.state, &route.params);
-                        } // TODO 403 Forbidden
-                    }
+                    // Tell the page renderer it's being opened
+                    self.page_render.open(&mut self.state, Some(&route.params));
                 }
+
+                // Render the page
+                self.page_render.ui(ui, &mut self.state, Some(&route.params))
             } else {
                 // TODO 404 not found
             }
@@ -73,8 +85,18 @@ impl PigWebClient {
         // Note that you must enable the `persistence` feature for this to work.
         let mut res: PigWebClient =
             cc.storage.and_then(|storage| eframe::get_value(storage, Self::APP_KEY)).unwrap_or_default();
+
+        // Setup styles
         res.state.colorix = style::set_styles(cc);
+
+        // Get the updated renderer, in case a different page was loaded
+        // then send the open command
+        res.page_render = res.route.get_renderer();
+        res.page_render.open(&mut res.state, None);
+
+        // Register routes with the router
         res.register_routes();
+
         res
     }
 

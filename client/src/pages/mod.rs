@@ -1,32 +1,26 @@
 use crate::data::state::ClientState;
-use crate::pages::pigpage::PigPage;
+use crate::pages::pigpage::PigPageRender;
 use egui::Ui;
 use matchit::Params;
 
 pub mod layout;
 pub mod pigpage;
 
+#[derive(Debug, PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 pub enum Routes {
     Pigs,
 }
 
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub enum Pages {
-    Pigs(PigPage),
-    Logs,
-    Users,
-    System,
-}
-
-impl Pages {
-    pub fn data(&mut self) -> Box<&mut dyn PageImpl> {
+impl Routes {
+    pub fn get_renderer(&mut self) -> Box<dyn RenderPage> {
         match self {
-            Pages::Pigs(page) => Box::new(page),
-            _ => todo!(),
+            Self::Pigs => Box::new(PigPageRender::default()),
         }
     }
 }
 
-pub trait PageImpl {
-    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, params: &Params);
+pub trait RenderPage {
+    fn open(&mut self, state: &mut ClientState, params: Option<&Params>) {}
+
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, params: Option<&Params>);
 }

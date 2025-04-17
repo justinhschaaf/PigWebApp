@@ -1,19 +1,31 @@
-use crate::data::api::{AuthApi, Status};
+use crate::data::api::{ApiError, AuthApi, Status};
 use crate::data::state::ClientState;
 use crate::modal::Modal;
+use crate::pages::RenderPage;
 use eframe::emath::Align;
 use egui::{menu, Context, OpenUrl, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
+use matchit::Params;
 use pigweb_common::users::Roles;
 use pigweb_common::{yuri, AUTH_API_ROOT};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Layout {
-    #[serde(skip)]
-    auth_api: AuthApi,
+    /// The error message currently on display, if any
+    pub display_error: Option<ApiError>,
 }
 
 impl Default for Layout {
+    fn default() -> Self {
+        Self { display_error: None }
+    }
+}
+
+pub struct LayoutRender {
+    auth_api: AuthApi,
+}
+
+impl Default for LayoutRender {
     fn default() -> Self {
         let mut auth_api = AuthApi::default();
 
@@ -24,29 +36,31 @@ impl Default for Layout {
     }
 }
 
-impl Layout {
-    pub fn ui(ui: &mut Ui, state: &mut ClientState) {
+impl RenderPage for LayoutRender {
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _params: Option<&Params>) {
         // Handle all the incoming data
-        Self::process_promises(state);
+        self.process_promises(state);
 
         TopBottomPanel::top("top_panel").resizable(false).show(ui.ctx(), |ui| {
             menu::bar(ui, |ui| {
-                Self::populate_menu(ui, state);
+                self.populate_menu(ui, state);
             });
         });
 
-        Self::show_modals(ui.ctx(), state);
+        self.show_modals(ui.ctx(), state);
     }
+}
 
-    fn process_promises(state: &mut ClientState) {
-        match state.layout.auth_api.is_authenticated.resolve() {
+impl LayoutRender {
+    fn process_promises(&mut self, state: &mut ClientState) {
+        match self.auth_api.is_authenticated.resolve() {
             Status::Received(authorized) => state.authorized = authorized,
-            Status::Errored(err) => state.display_error = Some(err),
+            Status::Errored(err) => state.pages.layout.display_error = Some(err),
             Status::Pending => {}
         }
     }
 
-    fn populate_menu(ui: &mut Ui, state: &mut ClientState) {
+    fn populate_menu(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.add_space(2.0);
 
         // Use the Colorix theme picker instead of egui's
@@ -103,7 +117,7 @@ impl Layout {
         });
     }
 
-    fn show_modals(ctx: &Context, state: &mut ClientState) {
+    fn show_modals(&mut self, ctx: &Context, state: &mut ClientState) {
         if state.authorized.is_none() {
             let modal = Modal::new("Login")
                 .with_body("You need to login or renew your session to continue.")
@@ -120,7 +134,7 @@ impl Layout {
         }
 
         // TODO swap error modal for banner
-        if let Some(err_unwrapped) = state.display_error.as_ref() {
+        if let Some(err_unwrapped) = state.pages.layout.display_error.as_ref() {
             let heading = err_unwrapped.reason.as_ref().unwrap_or(&"Error".to_owned()).to_string();
             let heading_with_code = match err_unwrapped.code {
                 Some(code) => format!("{:?} {:?}", code, heading),
@@ -133,7 +147,7 @@ impl Layout {
                 .show(ctx);
 
             if modal.should_close() {
-                state.display_error = None;
+                state.pages.layout.display_error = None;
             }
         }
     }
