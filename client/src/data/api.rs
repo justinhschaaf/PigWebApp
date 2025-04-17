@@ -1,10 +1,10 @@
 use ehttp::{Credentials, Headers, Request, Response};
 use log::debug;
 use pigweb_common::pigs::{Pig, PigQuery};
-use pigweb_common::users::Roles;
-use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT};
+use pigweb_common::users::{Roles, User, UserFetchResponse, UserQuery};
+use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT, USER_API_ROOT};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use tokio::sync::oneshot;
 use tokio::sync::oneshot::{Receiver, Sender};
 use uuid::Uuid;
@@ -295,6 +295,99 @@ endpoint!(PigFetchHandler, PigQuery, Vec<Pig>, |params: PigQuery| {
 
         // Convert the response to a pig object
         res.json::<Vec<Pig>>().map_err(|err| std::io::Error::from(err).into())
+    });
+
+    rx
+});
+
+/// Represents the API for working with users
+#[derive(Debug)]
+pub struct UserApi {
+    /// Fetch a list of user structs--or a mapping of their uuids to usernames,
+    /// based on permissions--which fit the query
+    pub fetch: UserFetchHandler,
+
+    /// Fetch a list of roles for each user which fits the query
+    pub roles: UserRolesHandler,
+
+    /// Expires the user with the given id and returns the updated user
+    pub expire: UserExpireHandler,
+}
+
+impl Default for UserApi {
+    fn default() -> Self {
+        Self {
+            fetch: UserFetchHandler::default(),
+            roles: UserRolesHandler::default(),
+            expire: UserExpireHandler::default(),
+        }
+    }
+}
+
+endpoint!(UserFetchHandler, UserQuery, UserFetchResponse, |params: UserQuery| {
+    let (tx, rx) = oneshot::channel();
+
+    // Submit the request to the server
+    let req = Request {
+        credentials: Credentials::SameOrigin,
+        headers: Headers::new(&[("Accept", "application/json")]),
+        ..Request::get(params.to_yuri())
+    };
+    fetch_and_send(req, tx, |res| {
+        // Handle errors
+        if res.status >= 400 {
+            return Err(res.into());
+        }
+
+        // Convert the response to the struct
+        res.json::<UserFetchResponse>().map_err(|err| std::io::Error::from(err).into())
+    });
+
+    rx
+});
+
+endpoint!(UserRolesHandler, UserQuery, BTreeMap<Uuid, BTreeSet<Roles>>, |params: UserQuery| {
+    let (tx, rx) = oneshot::channel();
+
+    // Submit the request to the server
+    let req = Request {
+        credentials: Credentials::SameOrigin,
+        headers: Headers::new(&[("Accept", "application/json")]),
+        ..Request::get(yuri!(USER_API_ROOT, "roles" ;? query!(params)))
+    };
+    fetch_and_send(req, tx, |res| {
+        // Handle errors
+        if res.status >= 400 {
+            return Err(res.into());
+        }
+
+        // Convert the response to the map
+        res.json::<BTreeMap<Uuid, BTreeSet<Roles>>>().map_err(|err| std::io::Error::from(err).into())
+    });
+
+    rx
+});
+
+endpoint!(UserExpireHandler, Uuid, User, |input: Uuid| {
+    let (tx, rx) = oneshot::channel();
+
+    // Convert method type to DELETE, ::get method is just a good starter
+    let req = Request {
+        method: "PATCH".to_owned(),
+        credentials: Credentials::SameOrigin,
+        headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
+        ..Request::get(yuri!(USER_API_ROOT, "expire" ;? query!("id" = input.to_string().as_str())))
+    };
+
+    // Submit the request, no fancy processing needed for this one
+    fetch_and_send(req, tx, |res| {
+        // Handle errors
+        if res.status >= 400 {
+            return Err(res.into());
+        }
+
+        // Convert the response to a user
+        res.json::<User>().map_err(|err| std::io::Error::from(err).into())
     });
 
     rx
