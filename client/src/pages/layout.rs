@@ -4,9 +4,9 @@ use crate::modal::Modal;
 use crate::pages::RenderPage;
 use eframe::emath::Align;
 use egui::{menu, Context, OpenUrl, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
-use matchit::Params;
 use pigweb_common::users::Roles;
 use pigweb_common::{yuri, AUTH_API_ROOT};
+use urlable::ParsedURL;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -37,7 +37,7 @@ impl Default for LayoutRender {
 }
 
 impl RenderPage for LayoutRender {
-    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _params: Option<&Params>) {
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _url: &ParsedURL) {
         // Handle all the incoming data
         self.process_promises(state);
 

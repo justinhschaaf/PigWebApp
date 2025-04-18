@@ -10,11 +10,11 @@ use egui::{
 };
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
-use matchit::Params;
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
 use std::cmp::PartialEq;
 use std::mem;
+use urlable::ParsedURL;
 
 // ( ͡° ͜ʖ ͡°)
 #[derive(Debug)]
@@ -76,11 +76,11 @@ impl Default for PigPageRender {
 }
 
 impl RenderPage for PigPageRender {
-    fn open(&mut self, state: &mut ClientState, _params: Option<&Params>) {
+    fn open(&mut self, state: &mut ClientState, _url: &ParsedURL) {
         self.do_query(state)
     }
 
-    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _params: Option<&Params>) {
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _url: &ParsedURL) {
         if !state.has_role(Roles::PigViewer) {
             // TODO 403 Forbidden
             return;

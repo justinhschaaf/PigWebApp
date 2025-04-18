@@ -1,7 +1,7 @@
 use crate::data::state::ClientState;
 use crate::pages::pigpage::PigPageRender;
 use egui::Ui;
-use matchit::Params;
+use urlable::ParsedURL;
 
 pub mod layout;
 pub mod pigpage;
@@ -20,7 +20,7 @@ impl Routes {
 }
 
 pub trait RenderPage {
-    fn open(&mut self, state: &mut ClientState, params: Option<&Params>) {}
+    fn open(&mut self, state: &mut ClientState, url: &ParsedURL) {}
 
-    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, params: Option<&Params>);
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL);
 }

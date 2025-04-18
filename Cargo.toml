@@ -41,7 +41,7 @@ eframe = { version = "0.31.1", default-features = false, features = [
     "persistence", # Enable restoring app state when restarting the app.
 ] }
 ehttp = { git = "https://github.com/jheidecker/ehttp.git", rev = "3394080225991402e9f0273dac733036d0e1fc18", features = ["json"] }
-matchit = "0.8.6"
+urlable = "0.2.0"
 
 # web only deps
 wasm-bindgen-futures = "0.4"
