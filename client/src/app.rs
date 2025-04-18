@@ -50,6 +50,7 @@ impl eframe::App for PigWebClient {
             // get the route from the url
             let route = match url.pathname.as_str() {
                 "/pigs" | "/" => Routes::Pigs,
+                _ => Routes::NotFound,
             };
 
             // If the route has changed, update the state to reflect it
