@@ -14,9 +14,6 @@ pub struct PigWebClient {
     /// Global app info
     state: ClientState,
 
-    /// The current route
-    route: Routes,
-
     #[serde(skip)]
     /// The layout renderer
     layout: LayoutRender,
@@ -30,7 +27,6 @@ impl Default for PigWebClient {
     fn default() -> Self {
         Self {
             state: ClientState::default(),
-            route: Routes::Pigs,
             layout: LayoutRender::default(),
             page_render: Box::new(PigPageRender::default()),
         }
@@ -54,12 +50,12 @@ impl eframe::App for PigWebClient {
             };
 
             // If the route has changed, update the state to reflect it
-            if route != self.route {
-                self.route = route;
-                self.page_render = self.route.get_renderer();
+            if route != self.state.route {
+                self.state.route = route;
+                self.page_render = self.state.route.get_renderer();
 
                 // Tell the page renderer it's being opened
-                self.page_render.open(&mut self.state, &url);
+                self.page_render.open(ctx, &mut self.state, &url);
             }
 
             // Render the page
@@ -90,8 +86,8 @@ impl PigWebClient {
         // Get the updated renderer, in case a different page was loaded
         // then send the open command
         let url = Self::url_from_webinfo(&cc.integration_info.web_info);
-        res.page_render = res.route.get_renderer();
-        res.page_render.open(&mut res.state, &url);
+        res.page_render = res.state.route.get_renderer();
+        res.page_render.open(&cc.egui_ctx, &mut res.state, &url);
 
         res
     }

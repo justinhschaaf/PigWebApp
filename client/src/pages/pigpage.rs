@@ -1,4 +1,4 @@
-use crate::data::api::{ApiError, PigApi, Status};
+use crate::data::api::{ApiError, PigApi, PigFetchHandler, Status};
 use crate::data::state::ClientState;
 use crate::modal::Modal;
 use crate::pages::RenderPage;
@@ -6,15 +6,18 @@ use chrono::Local;
 use eframe::emath::Align;
 use eframe::epaint::text::LayoutJob;
 use egui::{
-    Button, CentralPanel, Context, FontSelection, Label, Layout, ScrollArea, Sense, SidePanel, TextEdit, Ui, Widget,
+    Button, CentralPanel, Context, FontSelection, Label, Layout, OpenUrl, ScrollArea, Sense, SidePanel, TextEdit, Ui,
+    Widget,
 };
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
+use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
 use std::cmp::PartialEq;
 use std::mem;
 use urlable::ParsedURL;
+use uuid::Uuid;
 
 // ( ͡° ͜ʖ ͡°)
 #[derive(Debug)]
@@ -56,8 +59,14 @@ pub struct PigPageRender {
     /*
      * shit we don't care about saving as it's actively in use
      */
+    /// The last hash which was requested
+    last_hash: String,
+
     /// Handles sending and receiving API data
     pig_api: PigApi,
+
+    /// Handles API data specifically when getting the selection from the URL
+    pig_fetch_from_url: PigFetchHandler,
 
     /// The current list of search results
     query_results: Option<Vec<Pig>>,
@@ -67,29 +76,46 @@ pub struct PigPageRender {
 
     /// Whether to show the modal to confirm deleting a pig
     delete_modal: bool,
+
+    /// Whether to show the modal for a URL where no pig exists
+    pig_not_found_modal: bool,
 }
 
 impl Default for PigPageRender {
     fn default() -> Self {
-        Self { pig_api: PigApi::default(), query_results: None, dirty_modal: DirtyAction::None, delete_modal: false }
+        Self {
+            last_hash: String::new(),
+            pig_api: PigApi::default(),
+            pig_fetch_from_url: PigFetchHandler::default(),
+            query_results: None,
+            dirty_modal: DirtyAction::None,
+            delete_modal: false,
+            pig_not_found_modal: false,
+        }
     }
 }
 
 impl RenderPage for PigPageRender {
-    fn open(&mut self, state: &mut ClientState, _url: &ParsedURL) {
+    fn open(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
+        self.update_selection(ctx, state, url);
         self.do_query(state)
     }
 
-    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _url: &ParsedURL) {
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         if !state.has_role(Roles::PigViewer) {
             // TODO 403 Forbidden
             return;
         }
 
-        self.process_promises(state);
+        // don't redo selection if hash hasn't changed
+        if url.hash != self.last_hash {
+            self.update_selection(ui.ctx(), state, url);
+        }
+
+        self.process_promises(ui.ctx(), state, url);
 
         SidePanel::left("left_panel").resizable(false).show(ui.ctx(), |ui| {
-            self.populate_sidebar(ui, state);
+            self.populate_sidebar(ui, state, url);
         });
 
         CentralPanel::default().show(ui.ctx(), |ui| {
@@ -98,17 +124,53 @@ impl RenderPage for PigPageRender {
             });
         });
 
-        self.show_modals(ui.ctx(), state);
+        self.show_modals(ui.ctx(), state, url);
     }
 }
 
 impl PigPageRender {
-    fn process_promises(&mut self, state: &mut ClientState) {
+    fn update_selection(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
+        // remember that this was the last requested page
+        self.last_hash = url.hash.to_string();
+
+        // url.hash and self.last_hash must have the # character in it for previous checks to work
+        // for the logic below, it depends on that character being gone
+        let stripped_hash = self.last_hash.replacen('#', "", 1);
+        if !stripped_hash.is_empty() {
+            // convert slug to uuid
+            match Uuid::try_parse(stripped_hash.as_str()) {
+                Ok(uuid) => {
+                    // If we don't have a selection or the slug doesn't equal the
+                    // current selection, fetch the data of the desired pig
+                    if state.pages.pigs.selection.as_ref().is_none_or(|selected| uuid != selected.id) {
+                        debug!(
+                            "The selection has been updated via url! Previous Selection: {:?}",
+                            state.pages.pigs.selection.as_ref()
+                        );
+                        self.pig_fetch_from_url.request(PigQuery::default().with_id(&uuid).with_limit(1));
+                    }
+                }
+                Err(err) => {
+                    state.pages.layout.display_error =
+                        Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
+                    Self::update_url_hash(ctx, url, None);
+                    error!("Unable to parse hash \"{:?}\", err: {:?}", &stripped_hash, err);
+                }
+            }
+        } else if state.pages.pigs.selection.is_some() {
+            // if we have a pig selected, deselect it
+            debug!("Hash is empty but selection is {:?}, selecting None!", state.pages.pigs.selection.as_ref());
+            self.warn_if_dirty(ctx, state, url, DirtyAction::Select(None));
+        }
+    }
+
+    fn process_promises(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         // TODO make a macro or function for these
         match self.pig_api.create.resolve() {
             Status::Received(pig) => {
                 state.pages.pigs.dirty = false;
                 state.pages.pigs.selection = Some(pig);
+                Self::update_url_hash(ctx, url, Some(state.pages.pigs.selection.as_ref().unwrap().id));
                 self.do_query(state); // Redo the search query so it includes the new pig
             }
             Status::Errored(err) => {
@@ -140,6 +202,7 @@ impl PigPageRender {
             Status::Received(_) => {
                 state.pages.pigs.dirty = false;
                 state.pages.pigs.selection = None;
+                Self::update_url_hash(ctx, url, None);
                 self.do_query(state); // Redo the search query to exclude the deleted pig
             }
             Status::Errored(err) => {
@@ -163,9 +226,29 @@ impl PigPageRender {
             }
             Status::Pending => {}
         }
+
+        match self.pig_fetch_from_url.resolve() {
+            Status::Received(mut pigs) => {
+                // This request should have been made with limit = 1
+                // therefore, the only pig is the one we want
+                if let Some(pig) = pigs.pop() {
+                    self.warn_if_dirty(ctx, state, url, DirtyAction::Select(Some(pig)));
+                } else {
+                    self.pig_not_found_modal = true;
+                }
+            }
+            Status::Errored(err) => {
+                if err.code == Some(401) {
+                    state.authorized = None;
+                } else {
+                    state.pages.layout.display_error = Some(err);
+                }
+            }
+            Status::Pending => {}
+        }
     }
 
-    fn populate_sidebar(&mut self, ui: &mut Ui, state: &mut ClientState) {
+    fn populate_sidebar(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         ui.set_width(320.0);
         ui.add_space(8.0);
         ui.heading("The Pig List");
@@ -184,7 +267,7 @@ impl PigPageRender {
                 if ui.button("+ Add").clicked() {
                     // We need to save the name here or else borrow check complains
                     let name = state.pages.pigs.query.to_owned();
-                    self.warn_if_dirty(state, DirtyAction::Create(name));
+                    self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Create(name));
                 }
             });
         });
@@ -194,6 +277,8 @@ impl PigPageRender {
         // Only render the results table if we have results to show
         // TODO add pagination
         if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
+            let mut clicked: Option<Pig> = None;
+
             egui_extras::TableBuilder::new(ui)
                 .striped(true)
                 .resizable(false)
@@ -203,7 +288,6 @@ impl PigPageRender {
                 .body(|mut body| {
                     let pigs = self.query_results.as_ref().unwrap();
                     // This means we don't have to clone the list every frame
-                    let mut clicked: Option<Pig> = None;
                     pigs.iter().for_each(|pig| {
                         body.row(18.0, |mut row| {
                             // idfk why this wants us to clone selection, otherwise page is supposedly moved
@@ -226,12 +310,12 @@ impl PigPageRender {
                             }
                         });
                     });
-
-                    // Check if we have an action to do
-                    if clicked.is_some() {
-                        self.warn_if_dirty(state, DirtyAction::Select(Some(clicked.unwrap())));
-                    }
                 });
+
+            // Check if we have an action to do
+            if clicked.is_some() {
+                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Select(Some(clicked.unwrap())));
+            }
         } else if self.query_results.is_none() {
             // Still waiting on results, this should only happen when waiting
             // since otherwise it'll be an empty vec
@@ -329,7 +413,7 @@ impl PigPageRender {
         }
     }
 
-    fn show_modals(&mut self, ctx: &Context, state: &mut ClientState) {
+    fn show_modals(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         if self.delete_modal {
             let modal = Modal::new("delete")
                 .with_heading("Confirm Deletion")
@@ -355,12 +439,27 @@ impl PigPageRender {
                 .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
                 .show_with_extras(ctx, |ui| {
                     if ui.button("✔ Yes").clicked() {
-                        self.do_dirty_action(state);
+                        self.do_dirty_action(ui.ctx(), state, url);
                     }
                 });
 
             if modal.should_close() {
                 self.dirty_modal = DirtyAction::None;
+            }
+        }
+
+        if self.pig_not_found_modal {
+            let modal = Modal::new("pig_not_found")
+                .with_heading("Pig Not Found")
+                .with_body("We couldn't find a pig with that id.")
+                .show(ctx);
+
+            if modal.should_close() {
+                // Close the modal
+                self.pig_not_found_modal = false;
+
+                // Update the route
+                Self::update_url_hash(ctx, url, None);
             }
         }
     }
@@ -374,28 +473,38 @@ impl PigPageRender {
 
     /// If the dirty var is true, warn the user with a modal before performing
     /// the given action; otherwise, just do it
-    fn warn_if_dirty(&mut self, state: &mut ClientState, action: DirtyAction) {
+    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: DirtyAction) {
         self.dirty_modal = action;
 
         // If the state isn't dirty, execute the action right away
         // else if dirty_modal is not None, it will be shown
         if !state.pages.pigs.dirty {
-            self.do_dirty_action(state);
+            self.do_dirty_action(ctx, state, url);
         }
     }
 
-    fn do_dirty_action(&mut self, state: &mut ClientState) {
+    fn do_dirty_action(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         match &self.dirty_modal {
             DirtyAction::Create(name) => self.pig_api.create.request(name),
             DirtyAction::Select(selection) => {
                 // Change the selection
                 state.pages.pigs.selection = selection.as_ref().and_then(|pig| Some(pig.to_owned()));
+                Self::update_url_hash(ctx, url, state.pages.pigs.selection.as_ref().and_then(|pig| Some(pig.id)))
             }
             DirtyAction::None => {}
         }
         // Reset dirty state, how tf did i forget this?
         self.dirty_modal = DirtyAction::None;
         state.pages.pigs.dirty = false;
+    }
+
+    /// Updates the hash on the URL to the given UUID if it is Some, else
+    /// removes the hash from the URL. Then, asks egui to navigate to the new
+    /// URL.
+    fn update_url_hash(ctx: &Context, url: &ParsedURL, uuid: Option<Uuid>) {
+        let mut dest = url.clone();
+        dest.hash = uuid.map(|id| "#".to_owned() + id.to_string().as_str()).unwrap_or("".to_owned());
+        ctx.open_url(OpenUrl::same_tab(dest.stringify()));
     }
 }
 

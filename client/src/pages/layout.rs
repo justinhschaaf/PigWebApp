@@ -1,7 +1,7 @@
 use crate::data::api::{ApiError, AuthApi, Status};
 use crate::data::state::ClientState;
 use crate::modal::Modal;
-use crate::pages::RenderPage;
+use crate::pages::{RenderPage, Routes};
 use eframe::emath::Align;
 use egui::{menu, Context, OpenUrl, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
 use pigweb_common::users::Roles;
@@ -12,6 +12,7 @@ use urlable::ParsedURL;
 #[serde(default)]
 pub struct Layout {
     /// The error message currently on display, if any
+    #[serde(skip)]
     pub display_error: Option<ApiError>,
 }
 
@@ -74,9 +75,13 @@ impl LayoutRender {
         // allowed
         let mut show_second_separator = false;
 
-        // TODO make these actually change the page if it's needed
         if state.has_role(Roles::PigViewer) {
-            ui.toggle_value(&mut true, " 🐖 Pigs ");
+            let current = state.route == Routes::Pigs;
+            if ui.add(SelectableLabel::new(current, " 🐖 Pigs ")).clicked() {
+                if !current {
+                    ui.ctx().open_url(OpenUrl::same_tab("/pigs"))
+                }
+            }
             show_second_separator = true;
         }
         if state.has_role(Roles::BulkEditor) {

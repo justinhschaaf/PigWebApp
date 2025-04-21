@@ -1,5 +1,5 @@
 use ehttp::{Credentials, Headers, Request, Response};
-use log::debug;
+use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::{Roles, User, UserFetchResponse, UserQuery};
 use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT, USER_API_ROOT};
@@ -407,7 +407,10 @@ fn fetch_and_send<T: 'static + Send>(
                 debug!("Received response: {res:?}\nBody: {}", res.text().unwrap_or_default());
                 on_response(res)
             }
-            Err(msg) => Err(ApiError::new(msg.to_owned()).with_reason("No response".to_owned())),
+            Err(msg) => {
+                error!("Encountered fetch error: {:?}", msg.to_owned());
+                Err(ApiError::new(msg.to_owned()).with_reason("No response".to_owned()))
+            }
         })
         .unwrap_or_default()
     });

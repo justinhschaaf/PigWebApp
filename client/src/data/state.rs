@@ -1,5 +1,6 @@
 use crate::pages::layout::Layout;
 use crate::pages::pigpage::PigPage;
+use crate::pages::Routes;
 use egui_colors::Colorix;
 use pigweb_common::users::Roles;
 use std::collections::BTreeSet;
@@ -15,13 +16,16 @@ pub struct ClientState {
     #[serde(skip)]
     pub colorix: Colorix,
 
+    /// The current route
+    pub route: Routes,
+
     /// Data storage for individual pages
     pub pages: PageData,
 }
 
 impl Default for ClientState {
     fn default() -> Self {
-        Self { authorized: None, colorix: Colorix::default(), pages: PageData::default() }
+        Self { authorized: None, colorix: Colorix::default(), route: Routes::Pigs, pages: PageData::default() }
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::data::state::ClientState;
 use crate::pages::errpage::ErrPageRender;
 use crate::pages::pigpage::PigPageRender;
-use egui::Ui;
+use egui::{Context, Ui};
 use urlable::ParsedURL;
 
 mod errpage;
@@ -24,7 +24,7 @@ impl Routes {
 }
 
 pub trait RenderPage {
-    fn open(&mut self, state: &mut ClientState, url: &ParsedURL) {}
+    fn open(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {}
 
     fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL);
 }
