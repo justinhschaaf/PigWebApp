@@ -3,6 +3,7 @@ use crate::data::state::ClientState;
 use crate::modal::Modal;
 use crate::pages::RenderPage;
 use crate::style::TIME_FMT;
+use crate::update_url_hash;
 use chrono::Local;
 use eframe::emath::Align;
 use eframe::epaint::text::LayoutJob;
@@ -154,7 +155,7 @@ impl PigPageRender {
                 Err(err) => {
                     state.pages.layout.display_error =
                         Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
-                    Self::update_url_hash(ctx, url, None);
+                    update_url_hash(ctx, url, None);
                     error!("Unable to parse hash \"{:?}\", err: {:?}", &stripped_hash, err);
                 }
             }
@@ -169,7 +170,7 @@ impl PigPageRender {
         if let Some(pig) = self.pig_api.create.received(state) {
             state.pages.pigs.dirty = false;
             state.pages.pigs.selection = Some(pig);
-            Self::update_url_hash(ctx, url, Some(state.pages.pigs.selection.as_ref().unwrap().id));
+            update_url_hash(ctx, url, Some(state.pages.pigs.selection.as_ref().unwrap().id));
             self.do_query(state); // Redo the search query so it includes the new pig
         }
 
@@ -181,7 +182,7 @@ impl PigPageRender {
         if self.pig_api.delete.received(state).is_some() {
             state.pages.pigs.dirty = false;
             state.pages.pigs.selection = None;
-            Self::update_url_hash(ctx, url, None);
+            update_url_hash(ctx, url, None);
             self.do_query(state); // Redo the search query to exclude the deleted pig
         }
 
@@ -229,7 +230,7 @@ impl PigPageRender {
         // Only render the results table if we have results to show
         // TODO add pagination
         if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
-            let mut clicked: Option<Pig> = None;
+            let mut clicked: Option<Option<Pig>> = None;
 
             egui_extras::TableBuilder::new(ui)
                 .striped(true)
@@ -243,9 +244,9 @@ impl PigPageRender {
                     pigs.iter().for_each(|pig| {
                         body.row(18.0, |mut row| {
                             // idfk why this wants us to clone selection, otherwise page is supposedly moved
-                            row.set_selected(
-                                state.pages.pigs.selection.as_ref().is_some_and(|select| select.id == pig.id),
-                            );
+                            let selected =
+                                state.pages.pigs.selection.as_ref().is_some_and(|select| select.id == pig.id);
+                            row.set_selected(selected);
 
                             // Make sure we can't select the text or else we can't click the row behind
                             row.col(|ui| {
@@ -253,20 +254,22 @@ impl PigPageRender {
                             });
 
                             // On click, check if we have to change the selection before processing it
-                            if row.response().clicked()
-                                && !state.pages.pigs.selection.as_ref().is_some_and(|sel| sel.id == pig.id)
-                            {
+                            if row.response().clicked() {
                                 // warn about unsaved changes, else JUST DO IT
-                                // ...and we clone the clone because of fucking course we do D:<
-                                clicked = Some(pig.clone());
+                                if selected {
+                                    clicked = Some(None);
+                                } else {
+                                    // ...and we clone the clone because of fucking course we do D:<
+                                    clicked = Some(Some(pig.clone()));
+                                }
                             }
                         });
                     });
                 });
 
             // Check if we have an action to do
-            if clicked.is_some() {
-                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Select(Some(clicked.unwrap())));
+            if let Some(clicked) = clicked {
+                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Select(clicked));
             }
         } else if self.query_results.is_none() {
             // Still waiting on results, this should only happen when waiting
@@ -411,7 +414,7 @@ impl PigPageRender {
                 self.pig_not_found_modal = false;
 
                 // Update the route
-                Self::update_url_hash(ctx, url, None);
+                update_url_hash(ctx, url, None);
             }
         }
     }
@@ -441,22 +444,13 @@ impl PigPageRender {
             DirtyAction::Select(selection) => {
                 // Change the selection
                 state.pages.pigs.selection = selection.as_ref().and_then(|pig| Some(pig.to_owned()));
-                Self::update_url_hash(ctx, url, state.pages.pigs.selection.as_ref().and_then(|pig| Some(pig.id)))
+                update_url_hash(ctx, url, state.pages.pigs.selection.as_ref().and_then(|pig| Some(pig.id)))
             }
             DirtyAction::None => {}
         }
         // Reset dirty state, how tf did i forget this?
         self.dirty_modal = DirtyAction::None;
         state.pages.pigs.dirty = false;
-    }
-
-    /// Updates the hash on the URL to the given UUID if it is Some, else
-    /// removes the hash from the URL. Then, asks egui to navigate to the new
-    /// URL.
-    fn update_url_hash(ctx: &Context, url: &ParsedURL, uuid: Option<Uuid>) {
-        let mut dest = url.clone();
-        dest.hash = uuid.map(|id| "#".to_owned() + id.to_string().as_str()).unwrap_or("".to_owned());
-        ctx.open_url(OpenUrl::same_tab(dest.stringify()));
     }
 }
 
