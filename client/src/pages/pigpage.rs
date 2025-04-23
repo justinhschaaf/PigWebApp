@@ -2,6 +2,7 @@ use crate::data::api::{ApiError, PigApi, PigFetchHandler};
 use crate::data::state::ClientState;
 use crate::modal::Modal;
 use crate::pages::RenderPage;
+use crate::style::TIME_FMT;
 use chrono::Local;
 use eframe::emath::Align;
 use eframe::epaint::text::LayoutJob;
@@ -358,7 +359,7 @@ impl PigPageRender {
 
                     add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
                         let create_time = pig.created.and_utc().with_timezone(&Local);
-                        ui.label(create_time.format("%a, %b %e %Y %T").to_string());
+                        ui.label(create_time.format(TIME_FMT).to_string());
                     });
                 });
         }

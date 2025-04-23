@@ -32,6 +32,8 @@ const FONT_MAIN: &[u8] = include_bytes!("../data/ReadexPro-Regular.ttf");
 /// The monospace font used for code blocks.
 const FONT_MONO: &[u8] = include_bytes!("../data/IBMPlexMono-Medium.ttf");
 
+pub const TIME_FMT: &'static str = "%a, %b %e %Y %T";
+
 /// Sets global styles on the given CreationContext and initializes Colorix to
 /// manage it. Returns the Colorix instance
 pub fn set_styles(cc: &eframe::CreationContext<'_>) -> Colorix {

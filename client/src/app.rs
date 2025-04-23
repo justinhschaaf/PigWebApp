@@ -38,7 +38,7 @@ impl eframe::App for PigWebClient {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             // get the current url
-            let mut url = Self::url_from_webinfo(&frame.info().web_info);
+            let url = Self::url_from_webinfo(&frame.info().web_info);
 
             // show the global layout first
             self.layout.ui(ui, &mut self.state, &url);
@@ -46,6 +46,7 @@ impl eframe::App for PigWebClient {
             // get the route from the url
             let route = match url.pathname.as_str() {
                 "/pigs" | "/" => Routes::Pigs,
+                "/users" => Routes::Users,
                 _ => Routes::NotFound,
             };
 

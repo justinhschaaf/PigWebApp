@@ -93,7 +93,12 @@ impl LayoutRender {
             show_second_separator = true;
         }
         if state.has_role(Roles::UserViewer) {
-            ui.add_enabled(false, SelectableLabel::new(false, " 😐 Users "));
+            let current = state.route == Routes::Users;
+            if ui.add(SelectableLabel::new(current, " 😐 Users ")).clicked() {
+                if !current {
+                    ui.ctx().open_url(OpenUrl::same_tab("/users"))
+                }
+            }
             show_second_separator = true;
         }
         //ui.add_enabled(false, SelectableLabel::new(false, " ⛭ System "));
