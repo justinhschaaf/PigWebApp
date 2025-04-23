@@ -1,3 +1,4 @@
+use crate::data::state::ClientState;
 use ehttp::{Credentials, Headers, Request, Response};
 use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
@@ -114,10 +115,33 @@ macro_rules! endpoint {
         }
 
         impl $name {
+            /// Submit a request with the given input to this endpoint
             pub fn request(&mut self, input: $input) {
                 self.receiver = Some($requester(input));
             }
 
+            /// Returns Some if the endpoint gave a successful response.
+            ///
+            /// If resolve() returns error 401, clears the user's session and
+            /// forces them to sign in again. Displays any other error.
+            ///
+            /// No action is taken if the status is still pending.
+            pub fn received(&mut self, state: &mut ClientState) -> Option<$output> {
+                match self.resolve() {
+                    Status::Received(res) => Some(res),
+                    Status::Errored(err) => {
+                        if err.code == Some(401) {
+                            state.authorized = None;
+                        } else {
+                            state.pages.layout.display_error = Some(err);
+                        }
+                        None
+                    }
+                    Status::Pending => None,
+                }
+            }
+
+            /// Returns the status of the last request sent to this endpoint.
             pub fn resolve(&mut self) -> Status<$output> {
                 let status = check_response_status(&mut self.receiver);
 
@@ -129,6 +153,8 @@ macro_rules! endpoint {
                 status
             }
 
+            /// Cancels the current request to this endpoint, ignoring any
+            /// response.
             pub fn discard(&mut self) {
                 self.receiver = None;
             }

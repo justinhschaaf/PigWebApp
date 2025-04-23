@@ -1,4 +1,4 @@
-use crate::data::api::{ApiError, PigApi, PigFetchHandler, Status};
+use crate::data::api::{ApiError, PigApi, PigFetchHandler};
 use crate::data::state::ClientState;
 use crate::modal::Modal;
 use crate::pages::RenderPage;
@@ -165,86 +165,37 @@ impl PigPageRender {
     }
 
     fn process_promises(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
-        // TODO make a macro or function for these
-        match self.pig_api.create.resolve() {
-            Status::Received(pig) => {
-                state.pages.pigs.dirty = false;
-                state.pages.pigs.selection = Some(pig);
-                Self::update_url_hash(ctx, url, Some(state.pages.pigs.selection.as_ref().unwrap().id));
-                self.do_query(state); // Redo the search query so it includes the new pig
-            }
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    state.authorized = None;
-                } else {
-                    state.pages.layout.display_error = Some(err);
-                }
-            }
-            Status::Pending => {}
+        if let Some(pig) = self.pig_api.create.received(state) {
+            state.pages.pigs.dirty = false;
+            state.pages.pigs.selection = Some(pig);
+            Self::update_url_hash(ctx, url, Some(state.pages.pigs.selection.as_ref().unwrap().id));
+            self.do_query(state); // Redo the search query so it includes the new pig
         }
 
-        match self.pig_api.update.resolve() {
-            Status::Received(_) => {
-                state.pages.pigs.dirty = false;
-                self.do_query(state); // Redo the search query so it includes any possible changes
-            }
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    state.authorized = None;
-                } else {
-                    state.pages.layout.display_error = Some(err);
-                }
-            }
-            Status::Pending => {}
+        if self.pig_api.update.received(state).is_some() {
+            state.pages.pigs.dirty = false;
+            self.do_query(state); // Redo the search query so it includes any possible changes
         }
 
-        match self.pig_api.delete.resolve() {
-            Status::Received(_) => {
-                state.pages.pigs.dirty = false;
-                state.pages.pigs.selection = None;
-                Self::update_url_hash(ctx, url, None);
-                self.do_query(state); // Redo the search query to exclude the deleted pig
-            }
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    state.authorized = None;
-                } else {
-                    state.pages.layout.display_error = Some(err);
-                }
-            }
-            Status::Pending => {}
+        if self.pig_api.delete.received(state).is_some() {
+            state.pages.pigs.dirty = false;
+            state.pages.pigs.selection = None;
+            Self::update_url_hash(ctx, url, None);
+            self.do_query(state); // Redo the search query to exclude the deleted pig
         }
 
-        match self.pig_api.fetch.resolve() {
-            Status::Received(pigs) => self.query_results = Some(pigs),
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    state.authorized = None;
-                } else {
-                    state.pages.layout.display_error = Some(err);
-                }
-            }
-            Status::Pending => {}
+        if let Some(pigs) = self.pig_api.fetch.received(state) {
+            self.query_results = Some(pigs);
         }
 
-        match self.pig_fetch_from_url.resolve() {
-            Status::Received(mut pigs) => {
-                // This request should have been made with limit = 1
-                // therefore, the only pig is the one we want
-                if let Some(pig) = pigs.pop() {
-                    self.warn_if_dirty(ctx, state, url, DirtyAction::Select(Some(pig)));
-                } else {
-                    self.pig_not_found_modal = true;
-                }
+        if let Some(mut pigs) = self.pig_fetch_from_url.received(state) {
+            // This request should have been made with limit = 1
+            // therefore, the only pig is the one we want
+            if let Some(pig) = pigs.pop() {
+                self.warn_if_dirty(ctx, state, url, DirtyAction::Select(Some(pig)));
+            } else {
+                self.pig_not_found_modal = true;
             }
-            Status::Errored(err) => {
-                if err.code == Some(401) {
-                    state.authorized = None;
-                } else {
-                    state.pages.layout.display_error = Some(err);
-                }
-            }
-            Status::Pending => {}
         }
     }
 
