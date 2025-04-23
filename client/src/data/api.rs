@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::data::state::ClientState;
 use ehttp::{Credentials, Headers, Request, Response};
 use log::{debug, error};

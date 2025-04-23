@@ -16,7 +16,7 @@ impl Default for ErrPageRender {
 }
 
 impl RenderPage for ErrPageRender {
-    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
+    fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _url: &ParsedURL) {
         CentralPanel::default().show(ui.ctx(), |ui| {
             state.colorix.draw_background(ui.ctx(), false);
             ui.vertical_centered(|ui| {

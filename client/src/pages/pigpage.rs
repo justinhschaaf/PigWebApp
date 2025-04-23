@@ -8,8 +8,7 @@ use chrono::Local;
 use eframe::emath::Align;
 use eframe::epaint::text::LayoutJob;
 use egui::{
-    Button, CentralPanel, Context, FontSelection, Label, Layout, OpenUrl, ScrollArea, Sense, SidePanel, TextEdit, Ui,
-    Widget,
+    Button, CentralPanel, Context, FontSelection, Label, Layout, ScrollArea, Sense, SidePanel, TextEdit, Ui, Widget,
 };
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
@@ -61,14 +60,11 @@ pub struct PigPageRender {
     /*
      * shit we don't care about saving as it's actively in use
      */
-    /// The last hash which was requested
-    last_hash: String,
-
     /// Handles sending and receiving API data
     pig_api: PigApi,
 
     /// Handles API data specifically when getting the selection from the URL
-    pig_fetch_from_url: PigFetchHandler,
+    pig_fetch_selection: PigFetchHandler,
 
     /// The current list of search results
     query_results: Option<Vec<Pig>>,
@@ -86,9 +82,8 @@ pub struct PigPageRender {
 impl Default for PigPageRender {
     fn default() -> Self {
         Self {
-            last_hash: String::new(),
             pig_api: PigApi::default(),
-            pig_fetch_from_url: PigFetchHandler::default(),
+            pig_fetch_selection: PigFetchHandler::default(),
             query_results: None,
             dirty_modal: DirtyAction::None,
             delete_modal: false,
@@ -98,8 +93,39 @@ impl Default for PigPageRender {
 }
 
 impl RenderPage for PigPageRender {
-    fn open(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
-        self.update_selection(ctx, state, url);
+    fn on_url_update(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
+        // url.hash and self.last_hash must have the # character in it for previous checks to work
+        // for the logic below, it depends on that character being gone
+        let stripped_hash = url.hash.replacen('#', "", 1);
+        if !stripped_hash.is_empty() {
+            // convert slug to uuid
+            match Uuid::try_parse(stripped_hash.as_str()) {
+                Ok(uuid) => {
+                    // If we don't have a selection or the slug doesn't equal the
+                    // current selection, fetch the data of the desired pig
+                    if state.pages.pigs.selection.as_ref().is_none_or(|selected| uuid != selected.id) {
+                        debug!(
+                            "The selection has been updated via url! Previous Selection: {:?}",
+                            state.pages.pigs.selection.as_ref()
+                        );
+                        self.pig_fetch_selection.request(PigQuery::default().with_id(&uuid).with_limit(1));
+                    }
+                }
+                Err(err) => {
+                    state.pages.layout.display_error =
+                        Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
+                    update_url_hash(ctx, url, None);
+                    error!("Unable to parse hash \"{:?}\", err: {:?}", &stripped_hash, err);
+                }
+            }
+        } else if state.pages.pigs.selection.is_some() {
+            // if we have a pig selected, deselect it
+            debug!("Hash is empty but selection is {:?}, selecting None!", state.pages.pigs.selection.as_ref());
+            self.warn_if_dirty(ctx, state, url, DirtyAction::Select(None));
+        }
+    }
+
+    fn open(&mut self, _ctx: &Context, state: &mut ClientState, _url: &ParsedURL) {
         self.do_query(state)
     }
 
@@ -107,11 +133,6 @@ impl RenderPage for PigPageRender {
         if !state.has_role(Roles::PigViewer) {
             // TODO 403 Forbidden
             return;
-        }
-
-        // don't redo selection if hash hasn't changed
-        if url.hash != self.last_hash {
-            self.update_selection(ui.ctx(), state, url);
         }
 
         self.process_promises(ui.ctx(), state, url);
@@ -131,41 +152,6 @@ impl RenderPage for PigPageRender {
 }
 
 impl PigPageRender {
-    fn update_selection(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
-        // remember that this was the last requested page
-        self.last_hash = url.hash.to_string();
-
-        // url.hash and self.last_hash must have the # character in it for previous checks to work
-        // for the logic below, it depends on that character being gone
-        let stripped_hash = self.last_hash.replacen('#', "", 1);
-        if !stripped_hash.is_empty() {
-            // convert slug to uuid
-            match Uuid::try_parse(stripped_hash.as_str()) {
-                Ok(uuid) => {
-                    // If we don't have a selection or the slug doesn't equal the
-                    // current selection, fetch the data of the desired pig
-                    if state.pages.pigs.selection.as_ref().is_none_or(|selected| uuid != selected.id) {
-                        debug!(
-                            "The selection has been updated via url! Previous Selection: {:?}",
-                            state.pages.pigs.selection.as_ref()
-                        );
-                        self.pig_fetch_from_url.request(PigQuery::default().with_id(&uuid).with_limit(1));
-                    }
-                }
-                Err(err) => {
-                    state.pages.layout.display_error =
-                        Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
-                    update_url_hash(ctx, url, None);
-                    error!("Unable to parse hash \"{:?}\", err: {:?}", &stripped_hash, err);
-                }
-            }
-        } else if state.pages.pigs.selection.is_some() {
-            // if we have a pig selected, deselect it
-            debug!("Hash is empty but selection is {:?}, selecting None!", state.pages.pigs.selection.as_ref());
-            self.warn_if_dirty(ctx, state, url, DirtyAction::Select(None));
-        }
-    }
-
     fn process_promises(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         if let Some(pig) = self.pig_api.create.received(state) {
             state.pages.pigs.dirty = false;
@@ -190,7 +176,7 @@ impl PigPageRender {
             self.query_results = Some(pigs);
         }
 
-        if let Some(mut pigs) = self.pig_fetch_from_url.received(state) {
+        if let Some(mut pigs) = self.pig_fetch_selection.received(state) {
             // This request should have been made with limit = 1
             // therefore, the only pig is the one we want
             if let Some(pig) = pigs.pop() {

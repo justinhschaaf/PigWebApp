@@ -27,7 +27,10 @@ impl Routes {
     }
 }
 
+#[allow(unused_variables)]
 pub trait RenderPage {
+    fn on_url_update(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {}
+
     fn open(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {}
 
     fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL);

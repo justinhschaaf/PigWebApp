@@ -21,6 +21,10 @@ pub struct PigWebClient {
     /// The currently open page renderer
     #[serde(skip)]
     page_render: Box<dyn RenderPage>,
+
+    /// The last hash which was requested
+    #[serde(skip)]
+    last_hash: String,
 }
 
 impl Default for PigWebClient {
@@ -29,6 +33,7 @@ impl Default for PigWebClient {
             state: ClientState::default(),
             layout: LayoutRender::default(),
             page_render: Box::new(PigPageRender::default()),
+            last_hash: String::new(),
         }
     }
 }
@@ -52,11 +57,17 @@ impl eframe::App for PigWebClient {
 
             // If the route has changed, update the state to reflect it
             if route != self.state.route {
+                self.last_hash = url.hash.to_owned();
                 self.state.route = route;
                 self.page_render = self.state.route.get_renderer();
 
                 // Tell the page renderer it's being opened
                 self.page_render.open(ctx, &mut self.state, &url);
+                self.page_render.on_url_update(ctx, &mut self.state, &url);
+            } else if url.hash != self.last_hash {
+                // Tell the page if we're on the same route but the hash has updated
+                self.last_hash = url.hash.to_owned();
+                self.page_render.on_url_update(ctx, &mut self.state, &url);
             }
 
             // Render the page
