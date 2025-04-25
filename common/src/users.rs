@@ -1,4 +1,4 @@
-use crate::{query, yuri, DEFAULT_API_RESPONSE_LIMIT, USER_API_ROOT};
+use crate::{query_limit_offset, query_list, query_to_yuri, DEFAULT_API_RESPONSE_LIMIT, USER_API_ROOT};
 use chrono::{NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::borrow::ToOwned;
@@ -70,40 +70,13 @@ impl Default for UserQuery {
 }
 
 impl UserQuery {
-    pub fn with_id(self, id: &Uuid) -> Self {
-        self.with_ids(vec![id.to_owned()])
-    }
-
-    pub fn with_id_string(self, id: &String) -> Self {
-        self.with_ids_string(vec![id.to_owned()])
-    }
-
-    pub fn with_ids(self, ids: Vec<Uuid>) -> Self {
-        self.with_ids_string(ids.iter().map(|e| e.to_string()).collect())
-    }
-
-    pub fn with_ids_string(mut self, ids: Vec<String>) -> Self {
-        self.id = Some(ids);
-        self
-    }
+    query_list!(id, Uuid);
+    query_limit_offset!();
+    query_to_yuri!(USER_API_ROOT);
 
     pub fn with_username(mut self, username: &String) -> Self {
         self.username = Some(username.to_owned());
         self
-    }
-
-    pub fn with_limit(mut self, limit: u32) -> Self {
-        self.limit = Some(limit);
-        self
-    }
-
-    pub fn with_offset(mut self, offset: u32) -> Self {
-        self.offset = Some(offset);
-        self
-    }
-
-    pub fn to_yuri(&self) -> String {
-        yuri!(USER_API_ROOT, "fetch" ;? query!(self))
     }
 
     /// Converts user query params to DB query

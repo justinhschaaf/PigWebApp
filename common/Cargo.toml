@@ -8,6 +8,7 @@ readme.workspace = true
 [dependencies]
 chrono.workspace = true
 form_urlencoded.workspace = true
+paste.workspace = true
 serde.workspace = true
 serde_url_params.workspace = true
 uuid.workspace = true

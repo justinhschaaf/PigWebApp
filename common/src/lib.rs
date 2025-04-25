@@ -51,3 +51,52 @@ pub fn parse_uuids(strings: &Vec<String>) -> Result<Vec<uuid::Uuid>, rocket::htt
         }
     }
 }
+
+#[macro_export]
+macro_rules! query_list {
+    ($var:ident, $input:ty) => {
+        // https://users.rust-lang.org/t/can-i-build-a-function-name-from-arguments-to-a-macro-rules/45061/4
+        paste::item! {
+            pub fn [< with_ $var >] (self, $var: &$input) -> Self {
+                self.[< with_ $var s >](vec![$var.to_owned()])
+            }
+
+            pub fn [< with_ $var _string >](self, $var: &String) -> Self {
+                self.[< with_ $var s_string >](vec![$var.to_owned()])
+            }
+
+            pub fn [< with_ $var s >] (self, $var: Vec<$input>) -> Self {
+                self.[< with_ $var s_string >]($var.iter().map(|e| e.to_string()).collect())
+            }
+
+            pub fn [< with_ $var s_string >] (mut self, $var: Vec<String>) -> Self {
+                self.$var = Some($var);
+                self
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! query_limit_offset {
+    () => {
+        pub fn with_limit(mut self, limit: u32) -> Self {
+            self.limit = Some(limit);
+            self
+        }
+
+        pub fn with_offset(mut self, offset: u32) -> Self {
+            self.offset = Some(offset);
+            self
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! query_to_yuri {
+    ($segment:expr) => {
+        pub fn to_yuri(&self) -> String {
+            $crate::yuri!($segment, "fetch" ;? $crate::query!(self))
+        }
+    }
+}

@@ -38,7 +38,7 @@ macro_rules! yuri {
     }};
     ($($segment:expr),+ ;? $query:expr) => {{
         // Compile the path segments into a string and compute the query string
-        let segment = yuri!($($segment),+);
+        let segment = $crate::yuri!($($segment),+);
         let query = $query;
 
         // If we have a query param, append it to the segment
