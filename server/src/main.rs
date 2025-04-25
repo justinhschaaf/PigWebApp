@@ -1,18 +1,20 @@
 #[macro_use]
 extern crate rocket;
 
-pub mod auth;
-pub mod config;
-pub mod pigapi;
-pub mod userapi;
+mod auth;
+mod bulkapi;
+mod config;
+mod pigapi;
+mod userapi;
 
 use crate::auth::get_auth_api_routes;
+use crate::bulkapi::get_bulk_api_routes;
 use crate::config::Config;
 use crate::pigapi::get_pig_api_routes;
 use crate::userapi::get_user_api_routes;
 use diesel::{Connection, PgConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use pigweb_common::{OpenIDAuth, AUTH_API_ROOT, PIG_API_ROOT, USER_API_ROOT};
+use pigweb_common::{OpenIDAuth, AUTH_API_ROOT, BULK_API_ROOT, PIG_API_ROOT, USER_API_ROOT};
 use rocket::fairing::AdHoc;
 use rocket::fs::NamedFile;
 use rocket::response::status::NotFound;
@@ -81,6 +83,7 @@ async fn rocket() -> _ {
         .mount("/", routes![index, files])
         .mount("/api", routes![api_root])
         .mount(AUTH_API_ROOT, get_auth_api_routes())
+        .mount(BULK_API_ROOT, get_bulk_api_routes())
         .mount(PIG_API_ROOT, get_pig_api_routes())
         .mount(USER_API_ROOT, get_user_api_routes());
 
