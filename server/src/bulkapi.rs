@@ -2,7 +2,7 @@ use crate::auth::AuthenticatedUser;
 use crate::config::Config;
 use chrono::Utc;
 use diesel::{PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
-use pigweb_common::bulk::{BulkImport, BulkPatch, BulkQuery};
+use pigweb_common::bulk::{BulkImport, BulkPatch, BulkQuery, PatchAction};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::schema;
 use pigweb_common::users::Roles;
@@ -131,11 +131,55 @@ async fn api_bulk_patch(
     if !auth_user.has_role(config, Roles::BulkEditor) {
         return Status::Forbidden;
     }
+    let actions = actions.into_inner();
 
-    // TODO implement me!
+    // Get object from the DB
+    let mut db_connection = db_connection.lock().unwrap();
+    let query = BulkQuery::default().with_id(&actions.id).with_limit(1);
+    let sql_req_res = query.to_db_select().select(BulkImport::as_select()).load(db_connection.deref_mut());
 
-    // https://stackoverflow.com/a/32890136
-    Status::MethodNotAllowed
+    if let Ok(mut imports) = sql_req_res {
+        if imports.len() != 1 {
+            error!(
+                "Found too many or too few BulkImports when updating! id: {:?}, matches: {:?}",
+                actions.id,
+                imports.len()
+            );
+            return Status::InternalServerError;
+        }
+
+        // Perform updates
+        let mut import = imports.pop().unwrap();
+
+        if let Some(pending_actions) = actions.pending.as_ref() {
+            perform_actions(pending_actions, &mut import.pending);
+        }
+
+        if let Some(accepted_actions) = actions.accepted.as_ref() {
+            perform_actions(accepted_actions, &mut import.accepted);
+        }
+
+        if let Some(rejected_actions) = actions.rejected.as_ref() {
+            perform_actions(rejected_actions, &mut import.rejected);
+        }
+
+        // Save changes
+        let sql_res = diesel::update(schema::bulk_imports::table).set(&import).execute(db_connection.deref_mut());
+
+        if sql_res.is_ok() {
+            Status::Ok
+        } else {
+            error!("Unable to save BulkImport patch changes! err: {:?}", sql_res.unwrap_err());
+            Status::InternalServerError
+        }
+    } else {
+        error!(
+            "Unable to load SQL result for BulkImport update! query: {:?}, err: {:?}",
+            query,
+            sql_req_res.unwrap_err()
+        );
+        Status::InternalServerError
+    }
 }
 
 #[get("/fetch?<query..>")]
@@ -168,5 +212,22 @@ async fn api_bulk_fetch(
     } else {
         error!("Unable to load SQL result for query {:?}: {:?}", query, sql_res.unwrap_err());
         Err(Status::InternalServerError)
+    }
+}
+
+fn perform_actions<T: PartialEq + Clone>(actions: &Vec<PatchAction<T>>, vec: &mut Vec<T>) {
+    for action in actions {
+        match action {
+            PatchAction::ADD(e) => vec.push(e.clone()),
+            PatchAction::REMOVE(e) => {
+                // .and_then expects the lambda to return an Option, but we don't care about it
+                let pos = vec.iter().position(|r| r.eq(e));
+                pos.and_then(|i| Some(vec.remove(i)));
+            }
+            PatchAction::UPDATE(old, new) => {
+                let pos = vec.iter().position(|r| r.eq(old));
+                pos.and_then(|i| Some(vec[i] = new.clone()));
+            }
+        }
     }
 }
