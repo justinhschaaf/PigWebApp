@@ -2,37 +2,20 @@ use crate::data::api::{ApiError, PigApi, PigFetchHandler};
 use crate::data::state::ClientState;
 use crate::modal::Modal;
 use crate::pages::RenderPage;
+use crate::selectable_list::SelectableList;
 use crate::style::TIME_FMT;
-use crate::update_url_hash;
+use crate::{update_url_hash, DirtyAction};
 use chrono::Local;
 use eframe::emath::Align;
 use eframe::epaint::text::LayoutJob;
-use egui::{
-    Button, CentralPanel, Context, FontSelection, Label, Layout, ScrollArea, Sense, SidePanel, TextEdit, Ui, Widget,
-};
+use egui::{Button, CentralPanel, Context, FontSelection, Label, Layout, ScrollArea, SidePanel, TextEdit, Ui, Widget};
 use egui_extras::{Column, TableBody};
 use egui_flex::{item, Flex, FlexJustify};
 use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
-use std::cmp::PartialEq;
-use std::mem;
 use urlable::ParsedURL;
 use uuid::Uuid;
-
-// ( ͡° ͜ʖ ͡°)
-#[derive(Debug)]
-pub enum DirtyAction {
-    Create(String),
-    Select(Option<Pig>),
-    None,
-}
-
-impl PartialEq for DirtyAction {
-    fn eq(&self, other: &Self) -> bool {
-        mem::discriminant(self) == mem::discriminant(other)
-    }
-}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -70,7 +53,7 @@ pub struct PigPageRender {
     query_results: Option<Vec<Pig>>,
 
     /// Modal which warns you when there's unsaved changes
-    dirty_modal: DirtyAction,
+    dirty_modal: DirtyAction<String, Pig>,
 
     /// Whether to show the modal to confirm deleting a pig
     delete_modal: bool,
@@ -216,41 +199,18 @@ impl PigPageRender {
         // Only render the results table if we have results to show
         // TODO add pagination
         if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
-            let mut clicked: Option<Option<Pig>> = None;
+            let clicked: Option<Option<Pig>> =
+                SelectableList::new().show(ui, self.query_results.as_ref().unwrap(), |row, pig| {
+                    // idfk why this wants us to clone selection, otherwise page is supposedly moved
+                    let selected = state.pages.pigs.selection.as_ref().is_some_and(|select| select.id == pig.id);
+                    row.set_selected(selected);
 
-            egui_extras::TableBuilder::new(ui)
-                .striped(true)
-                .resizable(false)
-                .column(Column::remainder())
-                .sense(Sense::click())
-                .cell_layout(Layout::left_to_right(Align::Center))
-                .body(|mut body| {
-                    let pigs = self.query_results.as_ref().unwrap();
-                    // This means we don't have to clone the list every frame
-                    pigs.iter().for_each(|pig| {
-                        body.row(18.0, |mut row| {
-                            // idfk why this wants us to clone selection, otherwise page is supposedly moved
-                            let selected =
-                                state.pages.pigs.selection.as_ref().is_some_and(|select| select.id == pig.id);
-                            row.set_selected(selected);
-
-                            // Make sure we can't select the text or else we can't click the row behind
-                            row.col(|ui| {
-                                Label::new(&pig.name).selectable(false).truncate().ui(ui);
-                            });
-
-                            // On click, check if we have to change the selection before processing it
-                            if row.response().clicked() {
-                                // warn about unsaved changes, else JUST DO IT
-                                if selected {
-                                    clicked = Some(None);
-                                } else {
-                                    // ...and we clone the clone because of fucking course we do D:<
-                                    clicked = Some(Some(pig.clone()));
-                                }
-                            }
-                        });
+                    // Make sure we can't select the text or else we can't click the row behind
+                    row.col(|ui| {
+                        Label::new(&pig.name).selectable(false).truncate().ui(ui);
                     });
+
+                    selected
                 });
 
             // Check if we have an action to do
@@ -414,7 +374,13 @@ impl PigPageRender {
 
     /// If the dirty var is true, warn the user with a modal before performing
     /// the given action; otherwise, just do it
-    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: DirtyAction) {
+    fn warn_if_dirty(
+        &mut self,
+        ctx: &Context,
+        state: &mut ClientState,
+        url: &ParsedURL,
+        action: DirtyAction<String, Pig>,
+    ) {
         self.dirty_modal = action;
 
         // If the state isn't dirty, execute the action right away

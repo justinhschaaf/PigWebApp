@@ -84,8 +84,13 @@ impl LayoutRender {
             }
             show_second_separator = true;
         }
-        if state.has_role(Roles::BulkEditor) {
-            ui.add_enabled(false, SelectableLabel::new(false, " 📥 Import "));
+        if state.has_role(Roles::BulkEditor) || state.has_role(Roles::BulkAdmin) {
+            let current = state.route == Routes::Bulk;
+            if ui.add(SelectableLabel::new(current, " 📥 Import ")).clicked() {
+                if !current {
+                    ui.ctx().open_url(OpenUrl::same_tab("/bulk"))
+                }
+            }
             show_second_separator = true;
         }
         if state.has_role(Roles::LogViewer) {

@@ -51,6 +51,7 @@ impl eframe::App for PigWebClient {
             // get the route from the url
             let route = match url.pathname.as_str() {
                 "/pigs" | "/" => Routes::Pigs,
+                "/bulk" => Routes::Bulk,
                 "/users" => Routes::Users,
                 _ => Routes::NotFound,
             };

@@ -1,3 +1,4 @@
+use crate::pages::bulkpage::BulkPage;
 use crate::pages::layout::Layout;
 use crate::pages::pigpage::PigPage;
 use crate::pages::Routes;
@@ -35,7 +36,7 @@ impl ClientState {
     }
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
+#[derive(Default, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct PageData {
     /// The common layout shown on all pages
@@ -43,10 +44,7 @@ pub struct PageData {
 
     /// Main page for managing the pig list
     pub pigs: PigPage,
-}
 
-impl Default for PageData {
-    fn default() -> Self {
-        Self { layout: Layout::default(), pigs: PigPage::default() }
-    }
+    /// Page for managing bulk imports
+    pub bulk: BulkPage,
 }
