@@ -3,9 +3,10 @@
 use crate::data::state::ClientState;
 use ehttp::{Credentials, Headers, Request, Response};
 use log::{debug, error};
+use pigweb_common::bulk::{BulkImport, BulkPatch, BulkQuery};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::{Roles, User, UserFetchResponse, UserQuery};
-use pigweb_common::{query, yuri, AUTH_API_ROOT, PIG_API_ROOT, USER_API_ROOT};
+use pigweb_common::{query, yuri, AUTH_API_ROOT, BULK_API_ROOT, PIG_API_ROOT, USER_API_ROOT};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use tokio::sync::oneshot;
@@ -164,15 +165,9 @@ macro_rules! endpoint {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AuthApi {
     pub is_authenticated: AuthCheckHandler,
-}
-
-impl Default for AuthApi {
-    fn default() -> Self {
-        Self { is_authenticated: AuthCheckHandler::default() }
-    }
 }
 
 endpoint!(AuthCheckHandler, bool, Option<BTreeSet<Roles>>, |_ignored: bool| {
@@ -201,8 +196,98 @@ endpoint!(AuthCheckHandler, bool, Option<BTreeSet<Roles>>, |_ignored: bool| {
     rx
 });
 
+#[derive(Debug, Default)]
+pub struct BulkApi {
+    pub create: BulkCreateHandler,
+    pub patch: BulkPatchHandler,
+    pub fetch: BulkFetchHandler,
+}
+
+endpoint!(BulkCreateHandler, &Vec<String>, BulkImport, |input| {
+    let (tx, rx) = oneshot::channel();
+
+    // If the JSON POST request was generated successfully
+    let req = Request::json(yuri!(BULK_API_ROOT, "create"), input);
+    if let Ok(req) = req {
+        // Add correct options to the request
+        let req = Request {
+            credentials: Credentials::SameOrigin,
+            headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
+            ..req
+        };
+
+        // Now actually submit the request, then relay the result to the channel sender
+        fetch_and_send(req, tx, |res| {
+            // Handle errors
+            if res.status >= 400 {
+                return Err(res.into());
+            }
+
+            // Convert the response to the correct type
+            res.json::<BulkImport>().map_err(|err| std::io::Error::from(err).into())
+        });
+    } else {
+        tx.send(Err(std::io::Error::from(req.unwrap_err()).into())).unwrap_or_default()
+    }
+
+    rx
+});
+
+endpoint!(BulkPatchHandler, &BulkPatch, Response, |input| {
+    let (tx, rx) = oneshot::channel();
+
+    // If the JSON POST request was generated successfully
+    let req = Request::json(yuri!(BULK_API_ROOT, "patch"), input);
+    if let Ok(req) = req {
+        // Add correct options to the request
+        let req = Request {
+            method: "PATCH".to_owned(),
+            credentials: Credentials::SameOrigin,
+            headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
+            ..req
+        };
+
+        // Now actually submit the request, then relay the result to the channel sender
+        // No fancy processing needed for this one
+        fetch_and_send(req, tx, |res| {
+            // Handle errors
+            if res.status >= 400 {
+                return Err(res.into());
+            }
+
+            Ok(res)
+        });
+    } else {
+        tx.send(Err(std::io::Error::from(req.unwrap_err()).into())).unwrap_or_default()
+    }
+
+    rx
+});
+
+endpoint!(BulkFetchHandler, &BulkQuery, Vec<BulkImport>, |input: &BulkQuery| {
+    let (tx, rx) = oneshot::channel();
+
+    // Submit the request to the server
+    let req = Request {
+        credentials: Credentials::SameOrigin,
+        headers: Headers::new(&[("Accept", "application/json")]),
+        ..Request::get(input.to_yuri())
+    };
+    fetch_and_send(req, tx, |res| {
+        // Handle errors
+        if res.status >= 400 {
+            return Err(res.into());
+        }
+
+        // Convert the response to the correct type
+        res.json::<Vec<BulkImport>>().map_err(|err| std::io::Error::from(err).into())
+    });
+
+    rx
+});
+
 /// Represents the API for working with pigs
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct PigApi {
     /// Create a new pig given the name as a &str
     pub create: PigCreateHandler,
@@ -215,18 +300,6 @@ pub struct PigApi {
 
     /// Searches for pigs baesd on the given &str query
     pub fetch: PigFetchHandler,
-}
-
-impl Default for PigApi {
-    fn default() -> Self {
-        // These must be defined individually or else we run into a "too much recursion" error
-        Self {
-            create: PigCreateHandler::default(),
-            update: PigUpdateHandler::default(),
-            delete: PigDeleteHandler::default(),
-            fetch: PigFetchHandler::default(),
-        }
-    }
 }
 
 endpoint!(PigCreateHandler, &str, Pig, |input| {
@@ -329,7 +402,7 @@ endpoint!(PigFetchHandler, PigQuery, Vec<Pig>, |params: PigQuery| {
 });
 
 /// Represents the API for working with users
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct UserApi {
     /// Fetch a list of user structs--or a mapping of their uuids to usernames,
     /// based on permissions--which fit the query
@@ -340,16 +413,6 @@ pub struct UserApi {
 
     /// Expires the user with the given id and returns the updated user
     pub expire: UserExpireHandler,
-}
-
-impl Default for UserApi {
-    fn default() -> Self {
-        Self {
-            fetch: UserFetchHandler::default(),
-            roles: UserRolesHandler::default(),
-            expire: UserExpireHandler::default(),
-        }
-    }
 }
 
 endpoint!(UserFetchHandler, UserQuery, UserFetchResponse, |params: UserQuery| {
@@ -399,7 +462,7 @@ endpoint!(UserRolesHandler, UserQuery, BTreeMap<Uuid, BTreeSet<Roles>>, |params:
 endpoint!(UserExpireHandler, Uuid, User, |input: Uuid| {
     let (tx, rx) = oneshot::channel();
 
-    // Convert method type to DELETE, ::get method is just a good starter
+    // Convert method type to PATCH, ::get method is just a good starter
     let req = Request {
         method: "PATCH".to_owned(),
         credentials: Credentials::SameOrigin,
