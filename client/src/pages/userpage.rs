@@ -1,7 +1,7 @@
 use crate::data::api::{ApiError, UserApi, UserFetchHandler};
 use crate::data::state::ClientState;
 use crate::pages::RenderPage;
-use crate::style::TIME_FMT;
+use crate::ui::style::TIME_FMT;
 use crate::update_url_hash;
 use chrono::{Local, Utc};
 use eframe::emath::Align;

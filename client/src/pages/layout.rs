@@ -1,7 +1,7 @@
 use crate::data::api::{ApiError, AuthApi, Status};
 use crate::data::state::ClientState;
-use crate::modal::Modal;
 use crate::pages::{RenderPage, Routes};
+use crate::ui::modal::Modal;
 use eframe::emath::Align;
 use egui::{menu, Context, OpenUrl, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
 use pigweb_common::users::Roles;

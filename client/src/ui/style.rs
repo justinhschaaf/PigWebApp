@@ -27,10 +27,10 @@ const THEME: [ThemeColor; 12] = [
 ];
 
 /// The primary font used by the application.
-const FONT_MAIN: &[u8] = include_bytes!("../data/ReadexPro-Regular.ttf");
+const FONT_MAIN: &[u8] = include_bytes!("../../data/ReadexPro-Regular.ttf");
 
 /// The monospace font used for code blocks.
-const FONT_MONO: &[u8] = include_bytes!("../data/IBMPlexMono-Medium.ttf");
+const FONT_MONO: &[u8] = include_bytes!("../../data/IBMPlexMono-Medium.ttf");
 
 pub const TIME_FMT: &'static str = "%a, %b %e %Y %T";
 

@@ -1,15 +1,13 @@
 use crate::data::api::{ApiError, PigApi, PigFetchHandler};
 use crate::data::state::ClientState;
-use crate::modal::Modal;
 use crate::pages::RenderPage;
-use crate::selectable_list::SelectableList;
-use crate::style::TIME_FMT;
+use crate::ui::modal::Modal;
+use crate::ui::style::TIME_FMT;
+use crate::ui::{add_properties_row, properties_list, selectable_list};
 use crate::{update_url_hash, DirtyAction};
 use chrono::Local;
-use eframe::emath::Align;
 use eframe::epaint::text::LayoutJob;
-use egui::{Button, CentralPanel, Context, FontSelection, Label, Layout, ScrollArea, SidePanel, TextEdit, Ui, Widget};
-use egui_extras::{Column, TableBody};
+use egui::{Button, CentralPanel, Context, FontSelection, Label, ScrollArea, SidePanel, TextEdit, Ui, Widget};
 use egui_flex::{item, Flex, FlexJustify};
 use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
@@ -199,19 +197,18 @@ impl PigPageRender {
         // Only render the results table if we have results to show
         // TODO add pagination
         if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
-            let clicked: Option<Option<Pig>> =
-                SelectableList::new().show(ui, self.query_results.as_ref().unwrap(), |row, pig| {
-                    // idfk why this wants us to clone selection, otherwise page is supposedly moved
-                    let selected = state.pages.pigs.selection.as_ref().is_some_and(|select| select.id == pig.id);
-                    row.set_selected(selected);
+            let clicked: Option<Option<Pig>> = selectable_list(ui, self.query_results.as_ref().unwrap(), |row, pig| {
+                // idfk why this wants us to clone selection, otherwise page is supposedly moved
+                let selected = state.pages.pigs.selection.as_ref().is_some_and(|select| select.id == pig.id);
+                row.set_selected(selected);
 
-                    // Make sure we can't select the text or else we can't click the row behind
-                    row.col(|ui| {
-                        Label::new(&pig.name).selectable(false).truncate().ui(ui);
-                    });
-
-                    selected
+                // Make sure we can't select the text or else we can't click the row behind
+                row.col(|ui| {
+                    Label::new(&pig.name).selectable(false).truncate().ui(ui);
                 });
+
+                selected
+            });
 
             // Check if we have an action to do
             if let Some(clicked) = clicked {
@@ -258,59 +255,53 @@ impl PigPageRender {
                 ui.add_space(4.0);
             }
 
-            egui_extras::TableBuilder::new(ui)
-                .striped(true)
-                .resizable(false)
-                .column(Column::initial(180.0))
-                .column(Column::remainder())
-                .cell_layout(Layout::left_to_right(Align::Center))
-                .body(|mut body| {
-                    add_pig_properties_row(&mut body, 40.0, "id", |ui| {
-                        ui.code(pig.id.to_string());
-                    });
+            properties_list(ui).body(|mut body| {
+                add_properties_row(&mut body, 40.0, "id", |ui| {
+                    ui.code(pig.id.to_string());
+                });
 
-                    add_pig_properties_row(&mut body, 80.0, "name", |ui| {
-                        // yes, all this is necessary
-                        // centered_and_justified makes the text box fill the value cell
-                        // ScrollArea lets you scroll when it's too big
-                        ui.centered_and_justified(|ui| {
-                            ScrollArea::vertical().show(ui, |ui| {
-                                // Adapted from https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/crates/egui/src/widgets/text_edit/builder.rs#L521-L529
-                                // We need to write a custom layouter for this so we can visually
-                                // wrap the text while still treating it as a single line
-                                let mut wrapped_singleline_layouter = |ui: &Ui, text: &str, wrap_width: f32| {
-                                    let job = LayoutJob::simple(
-                                        text.to_owned(),
-                                        FontSelection::default().resolve(ui.style()),
-                                        ui.visuals()
-                                            .override_text_color
-                                            .unwrap_or_else(|| ui.visuals().widgets.inactive.text_color()),
-                                        wrap_width,
-                                    );
-                                    ui.fonts(|f| f.layout_job(job))
-                                };
+                add_properties_row(&mut body, 80.0, "name", |ui| {
+                    // yes, all this is necessary
+                    // centered_and_justified makes the text box fill the value cell
+                    // ScrollArea lets you scroll when it's too big
+                    ui.centered_and_justified(|ui| {
+                        ScrollArea::vertical().show(ui, |ui| {
+                            // Adapted from https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/crates/egui/src/widgets/text_edit/builder.rs#L521-L529
+                            // We need to write a custom layouter for this so we can visually
+                            // wrap the text while still treating it as a single line
+                            let mut wrapped_singleline_layouter = |ui: &Ui, text: &str, wrap_width: f32| {
+                                let job = LayoutJob::simple(
+                                    text.to_owned(),
+                                    FontSelection::default().resolve(ui.style()),
+                                    ui.visuals()
+                                        .override_text_color
+                                        .unwrap_or_else(|| ui.visuals().widgets.inactive.text_color()),
+                                    wrap_width,
+                                );
+                                ui.fonts(|f| f.layout_job(job))
+                            };
 
-                                let te = TextEdit::singleline(&mut pig.name)
-                                    .desired_rows(4)
-                                    .layouter(&mut wrapped_singleline_layouter);
+                            let te = TextEdit::singleline(&mut pig.name)
+                                .desired_rows(4)
+                                .layouter(&mut wrapped_singleline_layouter);
 
-                                if ui.add_enabled(can_edit, te).changed() {
-                                    state.pages.pigs.dirty = true;
-                                }
-                            });
+                            if ui.add_enabled(can_edit, te).changed() {
+                                state.pages.pigs.dirty = true;
+                            }
                         });
                     });
-
-                    add_pig_properties_row(&mut body, 40.0, "created by", |ui| {
-                        // TODO actually bother fetching the user data
-                        ui.code(pig.creator.to_string());
-                    });
-
-                    add_pig_properties_row(&mut body, 40.0, "created on", |ui| {
-                        let create_time = pig.created.and_utc().with_timezone(&Local);
-                        ui.label(create_time.format(TIME_FMT).to_string());
-                    });
                 });
+
+                add_properties_row(&mut body, 40.0, "created by", |ui| {
+                    // TODO actually bother fetching the user data
+                    ui.code(pig.creator.to_string());
+                });
+
+                add_properties_row(&mut body, 40.0, "created at", |ui| {
+                    let create_time = pig.created.and_utc().with_timezone(&Local);
+                    ui.label(create_time.format(TIME_FMT).to_string());
+                });
+            });
         }
     }
 
@@ -404,16 +395,4 @@ impl PigPageRender {
         self.dirty_modal = DirtyAction::None;
         state.pages.pigs.dirty = false;
     }
-}
-
-// This is out here because putting it in the struct causes a self-reference error
-// it doesn't even need to use PigWebClient it's a fucking util method
-fn add_pig_properties_row(body: &mut TableBody<'_>, height: f32, label: &str, add_value: impl FnOnce(&mut Ui)) {
-    body.row(height, |mut row| {
-        row.col(|ui| {
-            ui.label(label);
-        });
-
-        row.col(add_value);
-    });
 }

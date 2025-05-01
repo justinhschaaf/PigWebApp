@@ -2,7 +2,7 @@ use crate::data::state::ClientState;
 use crate::pages::layout::LayoutRender;
 use crate::pages::pigpage::PigPageRender;
 use crate::pages::{RenderPage, Routes};
-use crate::style;
+use crate::ui::style;
 use eframe::WebInfo;
 use egui::Context;
 use urlable::{parse_url, ParsedURL};

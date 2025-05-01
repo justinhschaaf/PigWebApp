@@ -1,12 +1,12 @@
 use crate::data::api::BulkApi;
 use crate::data::state::ClientState;
-use crate::modal::Modal;
 use crate::pages::RenderPage;
-use crate::selectable_list::SelectableList;
-use crate::style::TIME_FMT;
+use crate::ui::modal::Modal;
+use crate::ui::style::TIME_FMT;
+use crate::ui::{add_properties_row, properties_list, selectable_list};
 use crate::DirtyAction;
 use chrono::Local;
-use egui::{Button, CentralPanel, Context, Label, SidePanel, Ui, Widget};
+use egui::{Button, CentralPanel, Context, Label, ScrollArea, SidePanel, Ui, Widget};
 use pigweb_common::bulk::{BulkImport, BulkQuery};
 use pigweb_common::users::Roles;
 use urlable::ParsedURL;
@@ -61,11 +61,7 @@ impl RenderPage for BulkPageRender {
             self.populate_sidebar(ui, state, url);
         });
 
-        CentralPanel::default().show(ui.ctx(), |ui| {
-            ui.vertical_centered(|ui| {
-                self.populate_center(ui, state, url);
-            });
-        });
+        self.populate_center(ui, state, url);
 
         self.show_modals(ui.ctx(), state, url);
     }
@@ -85,7 +81,8 @@ impl BulkPageRender {
             self.do_query();
         }
 
-        if let Some(imports) = self.bulk_api.fetch.received(state) {
+        if let Some(mut imports) = self.bulk_api.fetch.received(state) {
+            imports.reverse(); // show newest first
             self.all_imports = Some(imports);
         }
     }
@@ -99,7 +96,7 @@ impl BulkPageRender {
         // Only render the results table if we have results to show
         if self.all_imports.as_ref().is_some_and(|imports| !imports.is_empty()) {
             let clicked: Option<Option<BulkImport>> =
-                SelectableList::new().show(ui, self.all_imports.as_ref().unwrap(), |row, import| {
+                selectable_list(ui, self.all_imports.as_ref().unwrap(), |row, import| {
                     // idfk why this wants us to clone selection, otherwise page is supposedly moved
                     let selected =
                         state.pages.bulk.selected_import.as_ref().is_some_and(|select| select.id == import.id);
@@ -132,8 +129,6 @@ impl BulkPageRender {
     }
 
     fn populate_center(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
-        state.colorix.draw_background(ui.ctx(), false);
-
         if let Some(import) = state.pages.bulk.selected_import.as_ref() {
             if import.finished.is_some() {
                 self.populate_center_finished(ui, state);
@@ -141,16 +136,21 @@ impl BulkPageRender {
                 self.populate_center_edit(ui, state);
             }
         } else {
-            self.populate_center_create(ui, state, url);
+            CentralPanel::default().show(ui.ctx(), |ui| {
+                ui.vertical_centered(|ui| {
+                    self.populate_center_create(ui, state, url);
+                });
+            });
         }
     }
 
     fn populate_center_create(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         ui.set_max_width(540.0);
+        state.colorix.draw_background(ui.ctx(), false);
 
         // Title
         ui.add_space(8.0);
-        ui.heading("Start Import"); // convert to owned since we transfer a mut reference later
+        ui.heading("Paste Names Below");
         ui.add_space(8.0);
 
         let add_button = Button::new("+ Add All Pigs");
@@ -159,7 +159,11 @@ impl BulkPageRender {
             self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Create(names));
         }
 
-        ui.text_edit_multiline(&mut self.raw_names);
+        ui.centered_and_justified(|ui| {
+            ScrollArea::vertical().show(ui, |ui| {
+                ui.text_edit_multiline(&mut self.raw_names);
+            });
+        });
     }
 
     fn populate_center_edit(&mut self, ui: &mut Ui, state: &mut ClientState) {
@@ -167,7 +171,59 @@ impl BulkPageRender {
     }
 
     fn populate_center_finished(&mut self, ui: &mut Ui, state: &mut ClientState) {
-        // TODO
+        SidePanel::right("added_pigs").resizable(false).show(ui.ctx(), |ui| {
+            ui.set_width(320.0);
+
+            // TODO
+        });
+
+        CentralPanel::default().show(ui.ctx(), |ui| {
+            ui.vertical_centered(|ui| {
+                ui.set_max_width(540.0);
+                state.colorix.draw_background(ui.ctx(), false);
+                let is_admin = state.has_role(Roles::BulkAdmin);
+
+                // Title
+                ui.add_space(8.0);
+                ui.heading("Import Complete");
+                ui.add_space(8.0);
+
+                if let Some(import) = state.pages.bulk.selected_import.as_mut() {
+                    properties_list(ui).body(|mut body| {
+                        add_properties_row(&mut body, 40.0, "id", |ui| {
+                            ui.code(import.id.to_string());
+                        });
+
+                        if is_admin {
+                            add_properties_row(&mut body, 40.0, "created by", |ui| {
+                                // TODO actually bother fetching the user data
+                                ui.code(import.creator.to_string());
+                            });
+                        }
+
+                        add_properties_row(&mut body, 40.0, "started at", |ui| {
+                            let start_time = import.started.and_utc().with_timezone(&Local);
+                            ui.label(start_time.format(TIME_FMT).to_string());
+                        });
+
+                        if let Some(finished) = import.finished {
+                            add_properties_row(&mut body, 40.0, "finished at", |ui| {
+                                let finish_time = finished.and_utc().with_timezone(&Local);
+                                ui.label(finish_time.format(TIME_FMT).to_string());
+                            });
+                        }
+
+                        add_properties_row(&mut body, 40.0, "accepted", |ui| {
+                            ui.label(import.accepted.len().to_string());
+                        });
+
+                        add_properties_row(&mut body, 40.0, "rejected", |ui| {
+                            ui.label(import.rejected.len().to_string());
+                        });
+                    });
+                }
+            });
+        });
     }
 
     fn show_modals(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {

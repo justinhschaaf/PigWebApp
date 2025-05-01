@@ -1,9 +1,7 @@
 mod app;
 mod data;
-mod modal;
 mod pages;
-mod selectable_list;
-mod style;
+mod ui;
 
 pub use app::PigWebClient;
 use egui::{Context, OpenUrl};
