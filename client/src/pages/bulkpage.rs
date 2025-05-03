@@ -203,7 +203,42 @@ impl BulkPageRender {
     }
 
     fn populate_center_edit(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
-        // TODO
+        SidePanel::right("duplicate_pigs").resizable(false).show(ui.ctx(), |ui| {
+            ui.set_width(320.0);
+
+            ui.add_space(8.0);
+            ui.heading("Duplicates");
+            ui.add_space(8.0);
+
+            // TODO add duplicates, query should equal edit box
+        });
+
+        CentralPanel::default().show(ui.ctx(), |ui| {
+            ui.vertical_centered(|ui| {
+                ui.set_max_width(540.0);
+                state.colorix.draw_background(ui.ctx(), false);
+                let is_admin = state.has_role(Roles::BulkAdmin);
+
+                // Title
+                ui.add_space(8.0);
+                ui.heading("In Progress");
+                ui.add_space(8.0);
+
+                self.import_properties_list(ui, state, is_admin);
+
+                ui.add_space(8.0);
+                ui.heading("Add Names");
+                ui.add_space(8.0);
+
+                // TODO add edit box, add button, and open selected duplicate
+
+                // forces the second table to take on a new id. there's an id conflict without this
+                // due to the two tables in the one vertical_centered ui
+                ui.push_id(69, |ui| {
+                    self.selectable_mixed_list(ui, state, url);
+                });
+            });
+        });
     }
 
     fn populate_center_finished(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
@@ -224,51 +259,18 @@ impl BulkPageRender {
                 ui.heading("Import Complete");
                 ui.add_space(8.0);
 
-                if let Some(import) = state.pages.bulk.selected_import.as_mut() {
-                    let go_to_selection = Button::new("⮩ Go To Pig");
-                    if let SelectedImportedPig::Accepted(pig) =
-                        state.pages.bulk.selected_pig.as_ref().unwrap_or(&SelectedImportedPig::Rejected("".to_owned()))
-                    {
-                        if ui.add(go_to_selection).clicked() {
-                            ui.ctx().open_url(OpenUrl::same_tab("/pigs#".to_owned() + pig.id.to_string().as_str()))
-                        }
-                    } else {
-                        ui.add_enabled(false, go_to_selection);
+                let go_to_selection = Button::new("⮩ Go To Pig");
+                if let SelectedImportedPig::Accepted(pig) =
+                    state.pages.bulk.selected_pig.as_ref().unwrap_or(&SelectedImportedPig::Rejected("".to_owned()))
+                {
+                    if ui.add(go_to_selection).clicked() {
+                        ui.ctx().open_url(OpenUrl::same_tab("/pigs#".to_owned() + pig.id.to_string().as_str()))
                     }
-
-                    properties_list(ui).body(|mut body| {
-                        add_properties_row(&mut body, 40.0, "id", |ui| {
-                            ui.code(import.id.to_string());
-                        });
-
-                        if is_admin {
-                            add_properties_row(&mut body, 40.0, "created by", |ui| {
-                                // TODO actually bother fetching the user data
-                                ui.code(import.creator.to_string());
-                            });
-                        }
-
-                        add_properties_row(&mut body, 40.0, "started at", |ui| {
-                            let start_time = import.started.and_utc().with_timezone(&Local);
-                            ui.label(start_time.format(TIME_FMT).to_string());
-                        });
-
-                        if let Some(finished) = import.finished {
-                            add_properties_row(&mut body, 40.0, "finished at", |ui| {
-                                let finish_time = finished.and_utc().with_timezone(&Local);
-                                ui.label(finish_time.format(TIME_FMT).to_string());
-                            });
-                        }
-
-                        add_properties_row(&mut body, 40.0, "accepted", |ui| {
-                            ui.label(import.accepted.len().to_string());
-                        });
-
-                        add_properties_row(&mut body, 40.0, "rejected", |ui| {
-                            ui.label(import.rejected.len().to_string());
-                        });
-                    });
+                } else {
+                    ui.add_enabled(false, go_to_selection);
                 }
+
+                self.import_properties_list(ui, state, is_admin);
             });
         });
     }
@@ -335,6 +337,50 @@ impl BulkPageRender {
         // Reset dirty state, how tf did i forget this?
         self.dirty_modal = DirtyAction::None;
         state.pages.bulk.dirty = false;
+    }
+
+    pub fn import_properties_list(&mut self, ui: &mut Ui, state: &mut ClientState, is_admin: bool) {
+        if let Some(import) = state.pages.bulk.selected_import.as_mut() {
+            properties_list(ui).body(|mut body| {
+                add_properties_row(&mut body, 40.0, "id", |ui| {
+                    ui.code(import.id.to_string());
+                });
+
+                if is_admin {
+                    add_properties_row(&mut body, 40.0, "created by", |ui| {
+                        // TODO actually bother fetching the user data
+                        ui.code(import.creator.to_string());
+                    });
+                }
+
+                add_properties_row(&mut body, 40.0, "started at", |ui| {
+                    let start_time = import.started.and_utc().with_timezone(&Local);
+                    ui.label(start_time.format(TIME_FMT).to_string());
+                });
+
+                if let Some(finished) = import.finished {
+                    add_properties_row(&mut body, 40.0, "finished at", |ui| {
+                        let finish_time = finished.and_utc().with_timezone(&Local);
+                        ui.label(finish_time.format(TIME_FMT).to_string());
+                    });
+                }
+
+                let pending = import.pending.len();
+                if pending > 0 {
+                    add_properties_row(&mut body, 40.0, "pending", |ui| {
+                        ui.label(pending.to_string());
+                    });
+                }
+
+                add_properties_row(&mut body, 40.0, "accepted", |ui| {
+                    ui.label(import.accepted.len().to_string());
+                });
+
+                add_properties_row(&mut body, 40.0, "rejected", |ui| {
+                    ui.label(import.rejected.len().to_string());
+                });
+            });
+        }
     }
 
     pub fn selectable_mixed_list(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
