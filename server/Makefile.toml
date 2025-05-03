@@ -1,2 +1,2 @@
 [tasks.build-dev]
-condition = { profiles = ["development"], files_modified = { input = ["./src/**/*.rs"], output = ["./target/**/pigweb_server*"] } }
+condition = { profiles = ["development"], files_modified = { input = ["./src/**/*.rs", "../common/src/**/*.rs"], output = ["./target/**/pigweb_server*"] } }

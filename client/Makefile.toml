@@ -2,7 +2,7 @@
 # These *should* inherit the other options from the parent makefile, such as the args
 
 [tasks.build-dev]
-condition = { profiles = ["development"], files_modified = { input = ["./assets/**/*", "./index.html", "./src/**/*.rs"], output = ["./dist/**/*"] } }
+condition = { profiles = ["development"], files_modified = { input = ["./assets/**/*", "./index.html", "./src/**/*.rs", "../common/src/**/*.rs"], output = ["./dist/**/*"] } }
 command = "trunk"
 
 [tasks.build-prod]
