@@ -65,13 +65,14 @@ async fn api_bulk_create(
         let duplicates_sql_res = duplicates_sql_query.select(Pig::as_select()).load(db_connection.deref_mut());
 
         if let Ok(duplicates) = duplicates_sql_res {
-            // if we have duplicates and the first one isn't exact, add it to pending
+            // if we have duplicates and the first one is an exact duplicate, reject it
             if duplicates.len() > 0 {
                 if duplicates.get(1).is_some_and(|pig| pig.name.eq_ignore_ascii_case(name.as_str())) {
-                    pending.push(name);
-                } else {
                     // we have an exact duplicate, add to rejected
                     rejected.push(name);
+                } else {
+                    // duplicate isn't exact, looking into it
+                    pending.push(name);
                 }
             } else {
                 // we should only get to this case if we have no duplicates, in which case add the pig
