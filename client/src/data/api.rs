@@ -233,11 +233,11 @@ endpoint!(BulkCreateHandler, &Vec<String>, BulkImport, |input| {
     rx
 });
 
-endpoint!(BulkPatchHandler, &BulkPatch, Response, |input| {
+endpoint!(BulkPatchHandler, BulkPatch, BulkPatch, |input: BulkPatch| {
     let (tx, rx) = oneshot::channel();
 
     // If the JSON POST request was generated successfully
-    let req = Request::json(yuri!(BULK_API_ROOT, "patch"), input);
+    let req = Request::json(yuri!(BULK_API_ROOT, "patch"), &input);
     if let Ok(req) = req {
         // Add correct options to the request
         let req = Request {
@@ -255,7 +255,7 @@ endpoint!(BulkPatchHandler, &BulkPatch, Response, |input| {
                 return Err(res.into());
             }
 
-            Ok(res)
+            Ok(input)
         });
     } else {
         tx.send(Err(std::io::Error::from(req.unwrap_err()).into())).unwrap_or_default()
