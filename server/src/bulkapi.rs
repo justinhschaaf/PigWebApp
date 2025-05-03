@@ -1,8 +1,8 @@
 use crate::auth::AuthenticatedUser;
 use crate::config::Config;
 use chrono::Utc;
-use diesel::{PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
-use pigweb_common::bulk::{BulkImport, BulkPatch, BulkQuery, PatchAction};
+use diesel::{ExpressionMethods, PgConnection, QueryDsl, RunQueryDsl, SelectableHelper};
+use pigweb_common::bulk::{BulkImport, BulkPatch, BulkQuery};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::schema;
 use pigweb_common::users::Roles;
@@ -156,17 +156,11 @@ async fn api_bulk_patch(
 
         // Perform updates
         let mut import = imports.pop().unwrap();
+        actions.update_import(&mut import);
 
-        if let Some(pending_actions) = actions.pending.as_ref() {
-            perform_actions(pending_actions, &mut import.pending);
-        }
-
-        if let Some(accepted_actions) = actions.accepted.as_ref() {
-            perform_actions(accepted_actions, &mut import.accepted);
-        }
-
-        if let Some(rejected_actions) = actions.rejected.as_ref() {
-            perform_actions(rejected_actions, &mut import.rejected);
+        // if there are no pending pigs left we're done here
+        if import.pending.len() == 0 {
+            import.finished = Some(Utc::now().naive_utc());
         }
 
         // Save changes
@@ -223,22 +217,5 @@ async fn api_bulk_fetch(
     } else {
         error!("Unable to load SQL result for query {:?}: {:?}", query, sql_res.unwrap_err());
         Err(Status::InternalServerError)
-    }
-}
-
-fn perform_actions<T: PartialEq + Clone>(actions: &Vec<PatchAction<T>>, vec: &mut Vec<T>) {
-    for action in actions {
-        match action {
-            PatchAction::ADD(e) => vec.push(e.clone()),
-            PatchAction::REMOVE(e) => {
-                // .and_then expects the lambda to return an Option, but we don't care about it
-                let pos = vec.iter().position(|r| r.eq(e));
-                pos.and_then(|i| Some(vec.remove(i)));
-            }
-            PatchAction::UPDATE(old, new) => {
-                let pos = vec.iter().position(|r| r.eq(old));
-                pos.and_then(|i| Some(vec[i] = new.clone()));
-            }
-        }
     }
 }

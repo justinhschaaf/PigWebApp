@@ -61,6 +61,73 @@ pub struct BulkPatch {
     pub rejected: Option<Vec<PatchAction<String>>>,
 }
 
+impl BulkPatch {
+    pub fn new(id: &Uuid) -> Self {
+        Self { id: id.to_owned(), pending: None, accepted: None, rejected: None }
+    }
+
+    pub fn pending(mut self, action: PatchAction<String>) -> Self {
+        if self.pending.is_none() {
+            self.pending = Some(Vec::new());
+        }
+
+        self.pending.as_mut().unwrap().push(action);
+
+        self
+    }
+
+    pub fn accepted(mut self, action: PatchAction<Uuid>) -> Self {
+        if self.accepted.is_none() {
+            self.accepted = Some(Vec::new());
+        }
+
+        self.accepted.as_mut().unwrap().push(action);
+
+        self
+    }
+
+    pub fn rejected(mut self, action: PatchAction<String>) -> Self {
+        if self.rejected.is_none() {
+            self.rejected = Some(Vec::new());
+        }
+
+        self.rejected.as_mut().unwrap().push(action);
+
+        self
+    }
+
+    pub fn update_import(&self, import: &mut BulkImport) {
+        if let Some(pending_actions) = self.pending.as_ref() {
+            Self::perform_actions(pending_actions, &mut import.pending);
+        }
+
+        if let Some(accepted_actions) = self.accepted.as_ref() {
+            Self::perform_actions(accepted_actions, &mut import.accepted);
+        }
+
+        if let Some(rejected_actions) = self.rejected.as_ref() {
+            Self::perform_actions(rejected_actions, &mut import.rejected);
+        }
+    }
+
+    pub fn perform_actions<T: PartialEq + Clone>(actions: &Vec<PatchAction<T>>, vec: &mut Vec<T>) {
+        for action in actions {
+            match action {
+                PatchAction::ADD(e) => vec.push(e.clone()),
+                PatchAction::REMOVE(e) => {
+                    // .and_then expects the lambda to return an Option, but we don't care about it
+                    let pos = vec.iter().position(|r| r.eq(e));
+                    pos.and_then(|i| Some(vec.remove(i)));
+                }
+                PatchAction::UPDATE(old, new) => {
+                    let pos = vec.iter().position(|r| r.eq(old));
+                    pos.and_then(|i| Some(vec[i] = new.clone()));
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Serialize)]
 #[cfg_attr(feature = "server", derive(rocket::FromForm))]
 pub struct BulkQuery {
