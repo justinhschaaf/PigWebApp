@@ -3,11 +3,10 @@ use crate::data::state::ClientState;
 use crate::pages::RenderPage;
 use crate::ui::modal::Modal;
 use crate::ui::style::TIME_FMT;
-use crate::ui::{add_properties_row, properties_list, selectable_list};
+use crate::ui::{add_properties_row, properties_list, selectable_list, wrapped_singleline_layouter};
 use crate::update_url_hash;
 use chrono::Local;
-use eframe::epaint::text::LayoutJob;
-use egui::{Button, CentralPanel, Context, FontSelection, Label, ScrollArea, SidePanel, TextEdit, Ui, Widget};
+use egui::{Button, CentralPanel, Context, Label, ScrollArea, SidePanel, TextEdit, Ui, Widget};
 use egui_flex::{item, Flex, FlexJustify};
 use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
@@ -18,13 +17,13 @@ use uuid::Uuid;
 
 // ( ͡° ͜ʖ ͡°)
 #[derive(Debug)]
-enum DirtyAction {
+enum PigPageDirtyAction {
     Create(String),
     Select(Option<Pig>),
     None,
 }
 
-impl PartialEq for DirtyAction {
+impl PartialEq for PigPageDirtyAction {
     fn eq(&self, other: &Self) -> bool {
         mem::discriminant(self) == mem::discriminant(other)
     }
@@ -66,7 +65,7 @@ pub struct PigPageRender {
     query_results: Option<Vec<Pig>>,
 
     /// Modal which warns you when there's unsaved changes
-    dirty_modal: DirtyAction,
+    dirty_modal: PigPageDirtyAction,
 
     /// Whether to show the modal to confirm deleting a pig
     delete_modal: bool,
@@ -81,7 +80,7 @@ impl Default for PigPageRender {
             pig_api: PigApi::default(),
             fetch_url_selection: PigFetchHandler::default(),
             query_results: None,
-            dirty_modal: DirtyAction::None,
+            dirty_modal: PigPageDirtyAction::None,
             delete_modal: false,
             pig_not_found_modal: false,
         }
@@ -117,7 +116,7 @@ impl RenderPage for PigPageRender {
         } else if state.pages.pigs.selection.is_some() {
             // if we have a pig selected, deselect it
             debug!("Hash is empty but selection is {:?}, selecting None!", state.pages.pigs.selection.as_ref());
-            self.warn_if_dirty(ctx, state, url, DirtyAction::Select(None));
+            self.warn_if_dirty(ctx, state, url, PigPageDirtyAction::Select(None));
         }
     }
 
@@ -176,7 +175,7 @@ impl PigPageRender {
             // This request should have been made with limit = 1
             // therefore, the only pig is the one we want
             if let Some(pig) = pigs.pop() {
-                self.warn_if_dirty(ctx, state, url, DirtyAction::Select(Some(pig)));
+                self.warn_if_dirty(ctx, state, url, PigPageDirtyAction::Select(Some(pig)));
             } else {
                 self.pig_not_found_modal = true;
             }
@@ -202,7 +201,7 @@ impl PigPageRender {
                 if ui.button("+ Add").clicked() {
                     // We need to save the name here or else borrow check complains
                     let name = state.pages.pigs.query.to_owned();
-                    self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Create(name));
+                    self.warn_if_dirty(ui.ctx(), state, url, PigPageDirtyAction::Create(name));
                 }
             });
         });
@@ -227,7 +226,7 @@ impl PigPageRender {
 
             // Check if we have an action to do
             if let Some(clicked) = clicked {
-                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Select(clicked));
+                self.warn_if_dirty(ui.ctx(), state, url, PigPageDirtyAction::Select(clicked));
             }
         } else if self.query_results.is_none() {
             // Still waiting on results, this should only happen when waiting
@@ -281,25 +280,8 @@ impl PigPageRender {
                     // ScrollArea lets you scroll when it's too big
                     ui.centered_and_justified(|ui| {
                         ScrollArea::vertical().show(ui, |ui| {
-                            // Adapted from https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/crates/egui/src/widgets/text_edit/builder.rs#L521-L529
-                            // We need to write a custom layouter for this so we can visually
-                            // wrap the text while still treating it as a single line
-                            let mut wrapped_singleline_layouter = |ui: &Ui, text: &str, wrap_width: f32| {
-                                let job = LayoutJob::simple(
-                                    text.to_owned(),
-                                    FontSelection::default().resolve(ui.style()),
-                                    ui.visuals()
-                                        .override_text_color
-                                        .unwrap_or_else(|| ui.visuals().widgets.inactive.text_color()),
-                                    wrap_width,
-                                );
-                                ui.fonts(|f| f.layout_job(job))
-                            };
-
-                            let te = TextEdit::singleline(&mut pig.name)
-                                .desired_rows(4)
-                                .layouter(&mut wrapped_singleline_layouter);
-
+                            let mut layouter = wrapped_singleline_layouter();
+                            let te = TextEdit::singleline(&mut pig.name).desired_rows(4).layouter(&mut layouter);
                             if ui.add_enabled(can_edit, te).changed() {
                                 state.pages.pigs.dirty = true;
                             }
@@ -340,7 +322,7 @@ impl PigPageRender {
             }
         }
 
-        if self.dirty_modal != DirtyAction::None {
+        if self.dirty_modal != PigPageDirtyAction::None {
             let modal = Modal::new("dirty")
                 .with_heading("Discard Unsaved Changes")
                 .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
@@ -351,7 +333,7 @@ impl PigPageRender {
                 });
 
             if modal.should_close() {
-                self.dirty_modal = DirtyAction::None;
+                self.dirty_modal = PigPageDirtyAction::None;
             }
         }
 
@@ -380,7 +362,7 @@ impl PigPageRender {
 
     /// If the dirty var is true, warn the user with a modal before performing
     /// the given action; otherwise, just do it
-    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: DirtyAction) {
+    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: PigPageDirtyAction) {
         self.dirty_modal = action;
 
         // If the state isn't dirty, execute the action right away
@@ -392,16 +374,16 @@ impl PigPageRender {
 
     fn do_dirty_action(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         match &self.dirty_modal {
-            DirtyAction::Create(name) => self.pig_api.create.request(name),
-            DirtyAction::Select(selection) => {
+            PigPageDirtyAction::Create(name) => self.pig_api.create.request(name),
+            PigPageDirtyAction::Select(selection) => {
                 // Change the selection
                 state.pages.pigs.selection = selection.as_ref().and_then(|pig| Some(pig.to_owned()));
                 update_url_hash(ctx, url, state.pages.pigs.selection.as_ref().and_then(|pig| Some(pig.id)))
             }
-            DirtyAction::None => {}
+            PigPageDirtyAction::None => {}
         }
         // Reset dirty state, how tf did i forget this?
-        self.dirty_modal = DirtyAction::None;
+        self.dirty_modal = PigPageDirtyAction::None;
         state.pages.pigs.dirty = false;
     }
 }

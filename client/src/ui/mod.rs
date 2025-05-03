@@ -1,6 +1,7 @@
-use eframe::emath::Align;
-use egui::{Layout, Sense, Ui, WidgetText};
+use egui::text::LayoutJob;
+use egui::{Align, FontSelection, Galley, Layout, Sense, Ui, WidgetText};
 use egui_extras::{Column, TableBody, TableBuilder, TableRow};
+use std::sync::Arc;
 
 pub mod modal;
 pub mod style;
@@ -62,4 +63,19 @@ pub fn selectable_list<T: Clone>(
         });
 
     clicked
+}
+
+// Adapted from https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/crates/egui/src/widgets/text_edit/builder.rs#L521-L529
+// We need to write a custom layouter for this so we can visually
+// wrap the text while still treating it as a single line
+pub fn wrapped_singleline_layouter() -> impl FnMut(&Ui, &str, f32) -> Arc<Galley> {
+    |ui: &Ui, text: &str, wrap_width: f32| {
+        let job = LayoutJob::simple(
+            text.to_owned(),
+            FontSelection::default().resolve(ui.style()),
+            ui.visuals().override_text_color.unwrap_or_else(|| ui.visuals().widgets.inactive.text_color()),
+            wrap_width,
+        );
+        ui.fonts(|f| f.layout_job(job))
+    }
 }

@@ -1,16 +1,18 @@
-use crate::data::api::{ApiError, BulkApi, BulkFetchHandler, PigApi, PigFetchHandler};
+use crate::data::api::{ApiError, BulkApi, BulkFetchHandler, PigCreateHandler, PigFetchHandler};
 use crate::data::state::ClientState;
 use crate::pages::RenderPage;
 use crate::ui::modal::Modal;
 use crate::ui::style::{THEME_ACCEPTED, THEME_REJECTED, TIME_FMT};
-use crate::ui::{add_properties_row, properties_list, selectable_list};
+use crate::ui::{add_properties_row, properties_list, selectable_list, wrapped_singleline_layouter};
 use crate::update_url_hash;
 use chrono::Local;
-use eframe::emath::Align;
-use egui::{Button, CentralPanel, Context, Label, Layout, OpenUrl, RichText, ScrollArea, Sense, SidePanel, Ui, Widget};
+use egui::{
+    Align, Button, CentralPanel, Context, Label, Layout, OpenUrl, RichText, ScrollArea, Sense, SidePanel, TextEdit, Ui,
+    Widget,
+};
 use egui_extras::{Column, TableBuilder};
 use log::{debug, error};
-use pigweb_common::bulk::{BulkImport, BulkQuery};
+use pigweb_common::bulk::{BulkImport, BulkPatch, BulkQuery, PatchAction};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
 use std::mem;
@@ -19,20 +21,20 @@ use uuid::Uuid;
 
 // ( ͡° ͜ʖ ͡°)
 #[derive(Debug)]
-pub enum DirtyAction {
+pub enum BulkPageDirtyAction {
     SelectImport(Option<BulkImport>),
     SelectPig(Option<SelectedImportedPig>),
     None,
 }
 
-impl PartialEq for DirtyAction {
+impl PartialEq for BulkPageDirtyAction {
     fn eq(&self, other: &Self) -> bool {
         mem::discriminant(self) == mem::discriminant(other)
     }
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-enum SelectedImportedPig {
+pub enum SelectedImportedPig {
     Pending(String),
     Accepted(Pig),
     Rejected(String),
@@ -45,13 +47,15 @@ pub struct BulkPage {
 
     pub selected_pig: Option<SelectedImportedPig>,
 
+    pub updated_name: String,
+
     /// Whether we have unsaved changes
     dirty: bool,
 }
 
 impl Default for BulkPage {
     fn default() -> Self {
-        Self { selected_import: None, selected_pig: None, dirty: false }
+        Self { selected_import: None, selected_pig: None, updated_name: String::default(), dirty: false }
     }
 }
 
@@ -59,9 +63,13 @@ pub struct BulkPageRender {
     bulk_api: BulkApi,
     fetch_url_selection: BulkFetchHandler,
     fetch_accepted_pigs: PigFetchHandler,
+    fetch_duplicate_pigs: PigFetchHandler,
+    create_pig: PigCreateHandler,
     all_imports: Option<Vec<BulkImport>>,
     accepted_pigs: Option<Vec<Pig>>,
-    dirty_modal: DirtyAction,
+    duplicate_pigs: Option<Vec<Pig>>,
+    selected_duplicate: Option<Pig>,
+    dirty_modal: BulkPageDirtyAction,
     raw_names: String,
     not_found_modal: bool,
 }
@@ -72,9 +80,13 @@ impl Default for BulkPageRender {
             bulk_api: BulkApi::default(),
             fetch_url_selection: BulkFetchHandler::default(),
             fetch_accepted_pigs: PigFetchHandler::default(),
+            fetch_duplicate_pigs: PigFetchHandler::default(),
+            create_pig: PigCreateHandler::default(),
             all_imports: None,
             accepted_pigs: None,
-            dirty_modal: DirtyAction::None,
+            duplicate_pigs: None,
+            selected_duplicate: None,
+            dirty_modal: BulkPageDirtyAction::None,
             raw_names: String::default(),
             not_found_modal: false,
         }
@@ -108,14 +120,14 @@ impl RenderPage for BulkPageRender {
                 }
             }
         } else if state.pages.bulk.selected_import.is_some() {
-            // if we have a pig selected, deselect it
-            debug!("Hash is empty but selection is {:?}, selecting None!", state.pages.bulk.selected_import.as_ref());
-            self.warn_if_dirty(ctx, state, url, DirtyAction::SelectImport(None));
+            // if we have a selection, update the hash to reflect it
+            update_url_hash(ctx, url, state.pages.bulk.selected_import.as_ref().map(|sel| sel.id));
         }
     }
 
     fn open(&mut self, _ctx: &Context, state: &mut ClientState, _url: &ParsedURL) {
-        self.do_query();
+        self.query_imports();
+        self.query_duplicates(state);
         self.update_accepted_pigs(state);
     }
 
@@ -144,13 +156,38 @@ impl BulkPageRender {
             state.pages.bulk.selected_import = Some(import);
             self.raw_names = String::default();
             update_url_hash(ctx, url, Some(state.pages.bulk.selected_import.as_ref().unwrap().id));
-            self.do_query();
+            self.query_imports();
             self.update_accepted_pigs(state);
         }
 
-        if self.bulk_api.patch.received(state).is_some() {
+        if let Some(patch) = self.bulk_api.patch.received(state) {
+            // update our lists to reflect the changes made by the patch
+            if let Some(sel) = state.pages.bulk.selected_import.as_mut() {
+                patch.update_import(sel);
+
+                // if import is complete, auto refresh our selection
+                if sel.pending.len() == 0 {
+                    self.fetch_url_selection.request(&BulkQuery::default().with_id(&sel.id));
+                }
+
+                // update our selected item in the list of all imports
+                if let Some(imports) = self.all_imports.as_mut() {
+                    let pos = imports.iter().position(|r| r.id.eq(&sel.id));
+                    pos.and_then(|i| Some(imports[i] = sel.clone()));
+                }
+            } else {
+                self.query_imports();
+            }
+
+            // reset the state
+            self.update_accepted_pigs(state);
+            self.duplicate_pigs = Some(Vec::new());
+            self.selected_duplicate = None;
             state.pages.bulk.dirty = false;
-            self.do_query();
+            state.pages.bulk.selected_pig = None;
+            state.pages.bulk.updated_name = String::default();
+
+            // TODO automatically select next pending name?
         }
 
         if let Some(mut imports) = self.bulk_api.fetch.received(state) {
@@ -162,7 +199,12 @@ impl BulkPageRender {
             // This request should have been made with limit = 1
             // therefore, the only pig is the one we want
             if let Some(sel) = imports.pop() {
-                self.warn_if_dirty(ctx, state, url, DirtyAction::SelectImport(Some(sel)));
+                if let Some(imports) = self.all_imports.as_mut() {
+                    let pos = imports.iter().position(|r| r.id.eq(&sel.id));
+                    pos.and_then(|i| Some(imports[i] = sel.clone()));
+                }
+
+                self.warn_if_dirty(ctx, state, url, BulkPageDirtyAction::SelectImport(Some(sel)));
             } else {
                 self.not_found_modal = true;
             }
@@ -170,6 +212,27 @@ impl BulkPageRender {
 
         if let Some(pigs) = self.fetch_accepted_pigs.received(state) {
             self.accepted_pigs = Some(pigs);
+        }
+
+        if let Some(pigs) = self.fetch_duplicate_pigs.received(state) {
+            self.duplicate_pigs = Some(pigs);
+        }
+
+        // When a pig is created, submit a patch request to update the import
+        if let Some(pig) = self.create_pig.received(state) {
+            if let Some(import) = state.pages.bulk.selected_import.as_ref() {
+                if let Some(sel) = state.pages.bulk.selected_pig.as_ref() {
+                    match sel {
+                        SelectedImportedPig::Pending(name) => {
+                            let patch = BulkPatch::new(&import.id)
+                                .pending(PatchAction::REMOVE(name.to_owned()))
+                                .accepted(PatchAction::ADD(pig.id));
+                            self.bulk_api.patch.request(patch);
+                        }
+                        _ => {}
+                    }
+                }
+            }
         }
     }
 
@@ -202,14 +265,11 @@ impl BulkPageRender {
 
             // Check if we have an action to do
             if let Some(clicked) = clicked {
-                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::SelectImport(clicked));
+                self.warn_if_dirty(ui.ctx(), state, url, BulkPageDirtyAction::SelectImport(clicked));
             }
         } else if self.all_imports.is_none() {
             // Still waiting on results, this should only happen when waiting
             // since otherwise it'll be an empty vec
-
-            // You spin me right 'round, baby, 'right round
-            // Like a record, baby, right 'round, 'round, 'round
             ui.vertical_centered(|ui| ui.spinner());
         }
     }
@@ -224,13 +284,13 @@ impl BulkPageRender {
         } else {
             CentralPanel::default().show(ui.ctx(), |ui| {
                 ui.vertical_centered(|ui| {
-                    self.populate_center_create(ui, state, url);
+                    self.populate_center_create(ui, state);
                 });
             });
         }
     }
 
-    fn populate_center_create(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
+    fn populate_center_create(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.set_max_width(540.0);
         state.colorix.draw_background(ui.ctx(), false);
 
@@ -260,7 +320,30 @@ impl BulkPageRender {
             ui.heading("Duplicates");
             ui.add_space(8.0);
 
-            // TODO add duplicates, query should equal edit box
+            if !state.pages.bulk.updated_name.is_empty()
+                && self.duplicate_pigs.as_ref().is_some_and(|pigs| !pigs.is_empty())
+            {
+                let clicked: Option<Option<Pig>> =
+                    selectable_list(ui, self.duplicate_pigs.as_ref().unwrap(), |row, pig| {
+                        // idfk why this wants us to clone selection, otherwise page is supposedly moved
+                        let selected = self.selected_duplicate.as_ref().is_some_and(|select| select.id == pig.id);
+                        row.set_selected(selected);
+
+                        // Make sure we can't select the text or else we can't click the row behind
+                        row.col(|ui| {
+                            Label::new(&pig.name).selectable(false).truncate().ui(ui);
+                        });
+
+                        selected
+                    });
+
+                // Check if we have an action to do
+                if let Some(clicked) = clicked {
+                    self.selected_duplicate = clicked;
+                }
+            } else if self.duplicate_pigs.is_none() {
+                ui.vertical_centered(|ui| ui.spinner());
+            }
         });
 
         CentralPanel::default().show(ui.ctx(), |ui| {
@@ -280,7 +363,61 @@ impl BulkPageRender {
                 ui.heading("Add Names");
                 ui.add_space(8.0);
 
-                // TODO add edit box, add button, and open selected duplicate
+                // whether the currently selected pig to take action on is pending
+                let selected_is_pending = state
+                    .pages
+                    .bulk
+                    .selected_pig
+                    .as_ref()
+                    .is_some_and(|sel| matches!(sel, SelectedImportedPig::Pending(_)));
+
+                // action buttons
+                ui.horizontal(|ui| {
+                    // Upon accepting the pig, submit a create request with what's in the edit box
+                    let add_button = Button::new("+ Accept");
+                    if ui
+                        .add_enabled(selected_is_pending && !state.pages.bulk.updated_name.is_empty(), add_button)
+                        .clicked()
+                    {
+                        self.create_pig.request(&state.pages.bulk.updated_name);
+                    }
+
+                    // Upon rejecting the name, submit a patch to remove it from the pending list and add it to the rejected list
+                    let reject_button = Button::new("🗑 Reject");
+                    if ui.add_enabled(selected_is_pending, reject_button).clicked() {
+                        match state.pages.bulk.selected_pig.as_ref().unwrap() {
+                            SelectedImportedPig::Pending(name) => {
+                                let patch = BulkPatch::new(&state.pages.bulk.selected_import.as_ref().unwrap().id)
+                                    .pending(PatchAction::REMOVE(name.to_owned()))
+                                    .rejected(PatchAction::ADD(name.to_owned()));
+                                self.bulk_api.patch.request(patch);
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    let open_duplicate = Button::new("⮩ Go To Duplicate");
+                    if ui.add_enabled(self.selected_duplicate.is_some(), open_duplicate).clicked() {
+                        ui.ctx().open_url(OpenUrl::same_tab(
+                            "/pigs#".to_owned() + self.selected_duplicate.as_ref().unwrap().id.to_string().as_str(),
+                        ))
+                    }
+                });
+
+                ui.add_space(8.0);
+
+                // edit text box
+                let mut layouter = wrapped_singleline_layouter();
+                let te = TextEdit::singleline(&mut state.pages.bulk.updated_name)
+                    .desired_rows(4)
+                    .layouter(&mut layouter)
+                    .desired_width(540.0);
+                if ui.add_enabled(selected_is_pending, te).changed() {
+                    state.pages.bulk.dirty = true;
+                    self.query_duplicates(state);
+                }
+
+                ui.add_space(8.0);
 
                 // forces the second table to take on a new id. there's an id conflict without this
                 // due to the two tables in the one vertical_centered ui
@@ -460,13 +597,13 @@ impl BulkPageRender {
 
             // Check if we have an action to do
             if let Some(clicked) = clicked {
-                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::SelectPig(clicked));
+                self.warn_if_dirty(ui.ctx(), state, url, BulkPageDirtyAction::SelectPig(clicked));
             }
         }
     }
 
     fn show_modals(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
-        if self.dirty_modal != DirtyAction::None {
+        if self.dirty_modal != BulkPageDirtyAction::None {
             let modal = Modal::new("dirty")
                 .with_heading("Discard Unsaved Changes")
                 .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
@@ -477,7 +614,7 @@ impl BulkPageRender {
                 });
 
             if modal.should_close() {
-                self.dirty_modal = DirtyAction::None;
+                self.dirty_modal = BulkPageDirtyAction::None;
             }
         }
 
@@ -499,9 +636,14 @@ impl BulkPageRender {
 
     /// Sends a fetch request for all results of the current query and clears
     /// the list of current results
-    fn do_query(&mut self) {
+    fn query_imports(&mut self) {
         self.all_imports = None;
         self.bulk_api.fetch.request(&BulkQuery::default());
+    }
+
+    fn query_duplicates(&mut self, state: &mut ClientState) {
+        self.duplicate_pigs = None;
+        self.fetch_duplicate_pigs.request(PigQuery::default().with_name(&state.pages.bulk.updated_name));
     }
 
     fn update_accepted_pigs(&mut self, state: &mut ClientState) {
@@ -515,7 +657,7 @@ impl BulkPageRender {
 
     /// If the dirty var is true, warn the user with a modal before performing
     /// the given action; otherwise, just do it
-    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: DirtyAction) {
+    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: BulkPageDirtyAction) {
         self.dirty_modal = action;
 
         // If the state isn't dirty, execute the action right away
@@ -527,21 +669,32 @@ impl BulkPageRender {
 
     fn do_dirty_action(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         match &self.dirty_modal {
-            DirtyAction::SelectImport(selection) => {
+            BulkPageDirtyAction::SelectImport(selection) => {
                 // Change the selection
                 state.pages.bulk.selected_import = selection.clone();
                 state.pages.bulk.selected_pig = None;
+                state.pages.bulk.updated_name = String::default();
                 update_url_hash(ctx, url, state.pages.bulk.selected_import.as_ref().and_then(|sel| Some(sel.id)));
                 self.update_accepted_pigs(state);
             }
-            DirtyAction::SelectPig(selection) => {
+            BulkPageDirtyAction::SelectPig(selection) => {
+                // Changes the edit text box if the pig is still pending
+                state.pages.bulk.updated_name = if selection.is_some() {
+                    match selection.as_ref().unwrap() {
+                        SelectedImportedPig::Pending(name) => name.to_owned(),
+                        _ => String::default(),
+                    }
+                } else {
+                    String::default()
+                };
                 state.pages.bulk.selected_pig = selection.clone();
+                self.query_duplicates(state);
             }
-            DirtyAction::None => {}
+            BulkPageDirtyAction::None => {}
         }
 
         // Reset dirty state, how tf did i forget this?
-        self.dirty_modal = DirtyAction::None;
+        self.dirty_modal = BulkPageDirtyAction::None;
         state.pages.bulk.dirty = false;
     }
 }
