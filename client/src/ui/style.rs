@@ -1,5 +1,5 @@
 use egui::epaint::text::{FontInsert, InsertFontFamily};
-use egui::FontData;
+use egui::{Color32, FontData};
 use egui_colors::tokens::ThemeColor;
 use egui_colors::Colorix;
 
@@ -9,6 +9,12 @@ const THEME_PRIMARY: ThemeColor = ThemeColor::Gray;
 
 /// The secondary theme color, accenting the primary. Pink.
 const THEME_ACCENT: ThemeColor = ThemeColor::Custom([255, 137, 172]);
+
+/// Theme color for accepted pig names in bulk import
+pub const THEME_ACCEPTED: Color32 = Color32::from_rgb(85, 187, 85);
+
+/// Theme color for rejected pig names in bulk import
+pub const THEME_REJECTED: Color32 = Color32::from_rgb(221, 51, 68);
 
 /// The theme scale used by egui_colors.
 const THEME: [ThemeColor; 12] = [

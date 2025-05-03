@@ -1,20 +1,46 @@
-use crate::data::api::BulkApi;
+use crate::data::api::{BulkApi, PigApi};
 use crate::data::state::ClientState;
 use crate::pages::RenderPage;
 use crate::ui::modal::Modal;
-use crate::ui::style::TIME_FMT;
+use crate::ui::style::{THEME_ACCEPTED, THEME_REJECTED, TIME_FMT};
 use crate::ui::{add_properties_row, properties_list, selectable_list};
-use crate::DirtyAction;
 use chrono::Local;
-use egui::{Button, CentralPanel, Context, Label, ScrollArea, SidePanel, Ui, Widget};
+use eframe::emath::Align;
+use egui::{Button, CentralPanel, Context, Label, Layout, RichText, ScrollArea, Sense, SidePanel, Ui, Widget};
+use egui_extras::{Column, TableBuilder};
 use pigweb_common::bulk::{BulkImport, BulkQuery};
+use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
+use std::mem;
 use urlable::ParsedURL;
+
+// ( ͡° ͜ʖ ͡°)
+#[derive(Debug)]
+pub enum DirtyAction {
+    SelectImport(Option<BulkImport>),
+    SelectPig(Option<SelectedImportedPig>),
+    None,
+}
+
+impl PartialEq for DirtyAction {
+    fn eq(&self, other: &Self) -> bool {
+        mem::discriminant(self) == mem::discriminant(other)
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+enum SelectedImportedPig {
+    Pending(String),
+    Accepted(Pig),
+    Rejected(String),
+}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct BulkPage {
     pub selected_import: Option<BulkImport>,
+
+    pub selected_pig: Option<SelectedImportedPig>,
 
     /// Whether we have unsaved changes
     dirty: bool,
@@ -22,14 +48,16 @@ pub struct BulkPage {
 
 impl Default for BulkPage {
     fn default() -> Self {
-        Self { selected_import: None, dirty: false }
+        Self { selected_import: None, selected_pig: None, dirty: false }
     }
 }
 
 pub struct BulkPageRender {
     bulk_api: BulkApi,
+    pig_api: PigApi,
     all_imports: Option<Vec<BulkImport>>,
-    dirty_modal: DirtyAction<Vec<String>, BulkImport>,
+    accepted_pigs: Option<Vec<Pig>>,
+    dirty_modal: DirtyAction,
     raw_names: String,
 }
 
@@ -37,7 +65,9 @@ impl Default for BulkPageRender {
     fn default() -> Self {
         Self {
             bulk_api: BulkApi::default(),
+            pig_api: PigApi::default(),
             all_imports: None,
+            accepted_pigs: None,
             dirty_modal: DirtyAction::None,
             raw_names: String::default(),
         }
@@ -45,8 +75,9 @@ impl Default for BulkPageRender {
 }
 
 impl RenderPage for BulkPageRender {
-    fn open(&mut self, _ctx: &Context, _state: &mut ClientState, _url: &ParsedURL) {
+    fn open(&mut self, _ctx: &Context, state: &mut ClientState, _url: &ParsedURL) {
         self.do_query();
+        self.update_accepted_pigs(state);
     }
 
     fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
@@ -74,6 +105,7 @@ impl BulkPageRender {
             state.pages.bulk.selected_import = Some(import);
             self.raw_names = String::default();
             self.do_query();
+            self.update_accepted_pigs(state);
         }
 
         if self.bulk_api.patch.received(state).is_some() {
@@ -84,6 +116,10 @@ impl BulkPageRender {
         if let Some(mut imports) = self.bulk_api.fetch.received(state) {
             imports.reverse(); // show newest first
             self.all_imports = Some(imports);
+        }
+
+        if let Some(pigs) = self.pig_api.fetch.received(state) {
+            self.accepted_pigs = Some(pigs);
         }
     }
 
@@ -116,7 +152,7 @@ impl BulkPageRender {
 
             // Check if we have an action to do
             if let Some(clicked) = clicked {
-                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Select(clicked));
+                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::SelectImport(clicked));
             }
         } else if self.all_imports.is_none() {
             // Still waiting on results, this should only happen when waiting
@@ -131,9 +167,9 @@ impl BulkPageRender {
     fn populate_center(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         if let Some(import) = state.pages.bulk.selected_import.as_ref() {
             if import.finished.is_some() {
-                self.populate_center_finished(ui, state);
+                self.populate_center_finished(ui, state, url);
             } else {
-                self.populate_center_edit(ui, state);
+                self.populate_center_edit(ui, state, url);
             }
         } else {
             CentralPanel::default().show(ui.ctx(), |ui| {
@@ -156,7 +192,7 @@ impl BulkPageRender {
         let add_button = Button::new("+ Add All Pigs");
         if ui.add_enabled(!self.raw_names.is_empty(), add_button).clicked() {
             let names = self.raw_names.lines().map(|l: &str| l.to_string()).collect::<Vec<String>>();
-            self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::Create(names));
+            self.bulk_api.create.request(&names);
         }
 
         ui.centered_and_justified(|ui| {
@@ -166,15 +202,15 @@ impl BulkPageRender {
         });
     }
 
-    fn populate_center_edit(&mut self, ui: &mut Ui, state: &mut ClientState) {
+    fn populate_center_edit(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         // TODO
     }
 
-    fn populate_center_finished(&mut self, ui: &mut Ui, state: &mut ClientState) {
+    fn populate_center_finished(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         SidePanel::right("added_pigs").resizable(false).show(ui.ctx(), |ui| {
             ui.set_width(320.0);
 
-            // TODO
+            self.selectable_mixed_list(ui, state, url);
         });
 
         CentralPanel::default().show(ui.ctx(), |ui| {
@@ -250,15 +286,18 @@ impl BulkPageRender {
         self.bulk_api.fetch.request(&BulkQuery::default());
     }
 
+    fn update_accepted_pigs(&mut self, state: &mut ClientState) {
+        self.accepted_pigs = None;
+        if let Some(selected_import) = state.pages.bulk.selected_import.as_ref() {
+            let len = selected_import.accepted.len();
+            let query = PigQuery::default().with_ids(&selected_import.accepted).with_limit(len as u32);
+            self.pig_api.fetch.request(query);
+        }
+    }
+
     /// If the dirty var is true, warn the user with a modal before performing
     /// the given action; otherwise, just do it
-    fn warn_if_dirty(
-        &mut self,
-        ctx: &Context,
-        state: &mut ClientState,
-        url: &ParsedURL,
-        action: DirtyAction<Vec<String>, BulkImport>,
-    ) {
+    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: DirtyAction) {
         self.dirty_modal = action;
 
         // If the state isn't dirty, execute the action right away
@@ -270,10 +309,16 @@ impl BulkPageRender {
 
     fn do_dirty_action(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         match &self.dirty_modal {
-            DirtyAction::Create(names) => self.bulk_api.create.request(names),
-            DirtyAction::Select(selection) => {
+            DirtyAction::SelectImport(selection) => {
                 // Change the selection
-                state.pages.bulk.selected_import = selection.as_ref().and_then(|import| Some(import.to_owned()));
+                state.pages.bulk.selected_import = selection.clone();
+                if state.pages.bulk.selected_import.is_none() {
+                    state.pages.bulk.selected_pig = None;
+                }
+                self.update_accepted_pigs(state);
+            }
+            DirtyAction::SelectPig(selection) => {
+                state.pages.bulk.selected_pig = selection.clone();
             }
             DirtyAction::None => {}
         }
@@ -281,5 +326,101 @@ impl BulkPageRender {
         // Reset dirty state, how tf did i forget this?
         self.dirty_modal = DirtyAction::None;
         state.pages.bulk.dirty = false;
+    }
+
+    pub fn selectable_mixed_list(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
+        let mut clicked: Option<Option<SelectedImportedPig>> = None;
+
+        if let Some(import) = state.pages.bulk.selected_import.as_ref() {
+            TableBuilder::new(ui)
+                .striped(true)
+                .resizable(false)
+                .column(Column::remainder())
+                .sense(Sense::click())
+                .cell_layout(Layout::left_to_right(Align::Center))
+                .body(|mut body| {
+                    import.pending.iter().for_each(|e| {
+                        body.row(18.0, |mut row| {
+                            let selected = state.pages.bulk.selected_pig.as_ref().is_some_and(|sel| match sel {
+                                SelectedImportedPig::Pending(name) => name == e,
+                                _ => false,
+                            });
+
+                            row.set_selected(selected);
+
+                            // Make sure we can't select the text or else we can't click the row behind
+                            row.col(|ui| {
+                                Label::new(e).selectable(false).truncate().ui(ui);
+                            });
+
+                            if row.response().clicked() {
+                                if selected {
+                                    clicked = Some(None);
+                                } else {
+                                    clicked = Some(Some(SelectedImportedPig::Pending(e.clone())));
+                                }
+                            }
+                        });
+                    });
+
+                    if let Some(accepted) = self.accepted_pigs.as_ref() {
+                        accepted.iter().for_each(|e| {
+                            body.row(18.0, |mut row| {
+                                let selected = state.pages.bulk.selected_pig.as_ref().is_some_and(|sel| match sel {
+                                    SelectedImportedPig::Accepted(pig) => pig.id == e.id,
+                                    _ => false,
+                                });
+
+                                row.set_selected(selected);
+
+                                // Make sure we can't select the text or else we can't click the row behind
+                                row.col(|ui| {
+                                    Label::new(RichText::new(&e.name).color(THEME_ACCEPTED))
+                                        .selectable(false)
+                                        .truncate()
+                                        .ui(ui);
+                                });
+
+                                if row.response().clicked() {
+                                    if selected {
+                                        clicked = Some(None);
+                                    } else {
+                                        clicked = Some(Some(SelectedImportedPig::Accepted(e.clone())));
+                                    }
+                                }
+                            });
+                        });
+                    }
+
+                    import.rejected.iter().for_each(|e| {
+                        body.row(18.0, |mut row| {
+                            let selected = state.pages.bulk.selected_pig.as_ref().is_some_and(|sel| match sel {
+                                SelectedImportedPig::Rejected(name) => name == e,
+                                _ => false,
+                            });
+
+                            row.set_selected(selected);
+
+                            // Make sure we can't select the text or else we can't click the row behind
+                            row.col(|ui| {
+                                Label::new(RichText::new(e).color(THEME_REJECTED)).selectable(false).truncate().ui(ui);
+                            });
+
+                            if row.response().clicked() {
+                                if selected {
+                                    clicked = Some(None);
+                                } else {
+                                    clicked = Some(Some(SelectedImportedPig::Rejected(e.clone())));
+                                }
+                            }
+                        });
+                    });
+                });
+
+            // Check if we have an action to do
+            if let Some(clicked) = clicked {
+                self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::SelectPig(clicked));
+            }
+        }
     }
 }

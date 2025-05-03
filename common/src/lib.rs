@@ -62,14 +62,14 @@ macro_rules! query_list {
         // https://users.rust-lang.org/t/can-i-build-a-function-name-from-arguments-to-a-macro-rules/45061/4
         paste::item! {
             pub fn [< with_ $var >] (self, $var: &$input) -> Self {
-                self.[< with_ $var s >](vec![$var.to_owned()])
+                self.[< with_ $var s >](&vec![$var.to_owned()])
             }
 
             pub fn [< with_ $var _string >](self, $var: &String) -> Self {
                 self.[< with_ $var s_string >](vec![$var.to_owned()])
             }
 
-            pub fn [< with_ $var s >] (self, $var: Vec<$input>) -> Self {
+            pub fn [< with_ $var s >] (self, $var: &Vec<$input>) -> Self {
                 self.[< with_ $var s_string >]($var.iter().map(|e| e.to_string()).collect())
             }
 

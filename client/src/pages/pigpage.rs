@@ -4,7 +4,7 @@ use crate::pages::RenderPage;
 use crate::ui::modal::Modal;
 use crate::ui::style::TIME_FMT;
 use crate::ui::{add_properties_row, properties_list, selectable_list};
-use crate::{update_url_hash, DirtyAction};
+use crate::update_url_hash;
 use chrono::Local;
 use eframe::epaint::text::LayoutJob;
 use egui::{Button, CentralPanel, Context, FontSelection, Label, ScrollArea, SidePanel, TextEdit, Ui, Widget};
@@ -12,8 +12,23 @@ use egui_flex::{item, Flex, FlexJustify};
 use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
+use std::mem;
 use urlable::ParsedURL;
 use uuid::Uuid;
+
+// ( ͡° ͜ʖ ͡°)
+#[derive(Debug)]
+enum DirtyAction {
+    Create(String),
+    Select(Option<Pig>),
+    None,
+}
+
+impl PartialEq for DirtyAction {
+    fn eq(&self, other: &Self) -> bool {
+        mem::discriminant(self) == mem::discriminant(other)
+    }
+}
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -51,7 +66,7 @@ pub struct PigPageRender {
     query_results: Option<Vec<Pig>>,
 
     /// Modal which warns you when there's unsaved changes
-    dirty_modal: DirtyAction<String, Pig>,
+    dirty_modal: DirtyAction,
 
     /// Whether to show the modal to confirm deleting a pig
     delete_modal: bool,
@@ -365,13 +380,7 @@ impl PigPageRender {
 
     /// If the dirty var is true, warn the user with a modal before performing
     /// the given action; otherwise, just do it
-    fn warn_if_dirty(
-        &mut self,
-        ctx: &Context,
-        state: &mut ClientState,
-        url: &ParsedURL,
-        action: DirtyAction<String, Pig>,
-    ) {
+    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: DirtyAction) {
         self.dirty_modal = action;
 
         // If the state isn't dirty, execute the action right away
