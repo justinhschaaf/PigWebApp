@@ -59,6 +59,11 @@ async fn api_bulk_create(
             import_name = Some(name.to_owned());
         }
 
+        // if this name is a duplicate of an already pending pig, skip it entirely
+        if pending.contains(&name) {
+            continue;
+        }
+
         // Search for duplicates
         let query = PigQuery::default().with_name(&name).with_limit(10);
         let duplicates_sql_query = query.to_db_select();
