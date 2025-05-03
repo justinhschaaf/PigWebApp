@@ -59,7 +59,10 @@ async fn api_pig_update(
     let mut db_connection = db_connection.lock().unwrap();
 
     // Because Pig derives Identifiable and AsChangeset it just kinda knows what needs to be updated
-    let sql_res = diesel::update(schema::pigs::table).set(&pig).get_result(db_connection.deref_mut());
+    let sql_res = diesel::update(schema::pigs::table)
+        .filter(schema::pigs::id.eq(&pig.id))
+        .set(&pig)
+        .get_result(db_connection.deref_mut());
 
     if sql_res.is_ok() {
         // Return the updated pig

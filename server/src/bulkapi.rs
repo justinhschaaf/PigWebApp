@@ -170,7 +170,12 @@ async fn api_bulk_patch(
         }
 
         // Save changes
-        let sql_res = diesel::update(schema::bulk_imports::table).set(&import).execute(db_connection.deref_mut());
+        // we need to manually filter the id out here, whereas it just works when updating the pigs table (well, it did)
+        // why did they break it? no fucking clue.
+        let sql_res = diesel::update(schema::bulk_imports::table)
+            .filter(schema::bulk_imports::id.eq(&import.id))
+            .set(&import)
+            .execute(db_connection.deref_mut());
 
         if sql_res.is_ok() {
             Status::Ok
