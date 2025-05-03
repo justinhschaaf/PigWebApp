@@ -60,7 +60,7 @@ pub struct PigPageRender {
     pig_api: PigApi,
 
     /// Handles API data specifically when getting the selection from the URL
-    pig_fetch_selection: PigFetchHandler,
+    fetch_url_selection: PigFetchHandler,
 
     /// The current list of search results
     query_results: Option<Vec<Pig>>,
@@ -79,7 +79,7 @@ impl Default for PigPageRender {
     fn default() -> Self {
         Self {
             pig_api: PigApi::default(),
-            pig_fetch_selection: PigFetchHandler::default(),
+            fetch_url_selection: PigFetchHandler::default(),
             query_results: None,
             dirty_modal: DirtyAction::None,
             delete_modal: false,
@@ -104,7 +104,7 @@ impl RenderPage for PigPageRender {
                             "The selection has been updated via url! Previous Selection: {:?}",
                             state.pages.pigs.selection.as_ref()
                         );
-                        self.pig_fetch_selection.request(PigQuery::default().with_id(&uuid).with_limit(1));
+                        self.fetch_url_selection.request(PigQuery::default().with_id(&uuid).with_limit(1));
                     }
                 }
                 Err(err) => {
@@ -172,7 +172,7 @@ impl PigPageRender {
             self.query_results = Some(pigs);
         }
 
-        if let Some(mut pigs) = self.pig_fetch_selection.received(state) {
+        if let Some(mut pigs) = self.fetch_url_selection.received(state) {
             // This request should have been made with limit = 1
             // therefore, the only pig is the one we want
             if let Some(pig) = pigs.pop() {

@@ -1,18 +1,21 @@
-use crate::data::api::{BulkApi, PigApi};
+use crate::data::api::{ApiError, BulkApi, BulkFetchHandler, PigApi, PigFetchHandler};
 use crate::data::state::ClientState;
 use crate::pages::RenderPage;
 use crate::ui::modal::Modal;
 use crate::ui::style::{THEME_ACCEPTED, THEME_REJECTED, TIME_FMT};
 use crate::ui::{add_properties_row, properties_list, selectable_list};
+use crate::update_url_hash;
 use chrono::Local;
 use eframe::emath::Align;
 use egui::{Button, CentralPanel, Context, Label, Layout, OpenUrl, RichText, ScrollArea, Sense, SidePanel, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
+use log::{debug, error};
 use pigweb_common::bulk::{BulkImport, BulkQuery};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
 use std::mem;
 use urlable::ParsedURL;
+use uuid::Uuid;
 
 // ( ͡° ͜ʖ ͡°)
 #[derive(Debug)]
@@ -54,27 +57,63 @@ impl Default for BulkPage {
 
 pub struct BulkPageRender {
     bulk_api: BulkApi,
-    pig_api: PigApi,
+    fetch_url_selection: BulkFetchHandler,
+    fetch_accepted_pigs: PigFetchHandler,
     all_imports: Option<Vec<BulkImport>>,
     accepted_pigs: Option<Vec<Pig>>,
     dirty_modal: DirtyAction,
     raw_names: String,
+    not_found_modal: bool,
 }
 
 impl Default for BulkPageRender {
     fn default() -> Self {
         Self {
             bulk_api: BulkApi::default(),
-            pig_api: PigApi::default(),
+            fetch_url_selection: BulkFetchHandler::default(),
+            fetch_accepted_pigs: PigFetchHandler::default(),
             all_imports: None,
             accepted_pigs: None,
             dirty_modal: DirtyAction::None,
             raw_names: String::default(),
+            not_found_modal: false,
         }
     }
 }
 
 impl RenderPage for BulkPageRender {
+    fn on_url_update(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
+        // url.hash and self.last_hash must have the # character in it for previous checks to work
+        // for the logic below, it depends on that character being gone
+        let stripped_hash = url.hash.replacen('#', "", 1);
+        if !stripped_hash.is_empty() {
+            // convert slug to uuid
+            match Uuid::try_parse(stripped_hash.as_str()) {
+                Ok(uuid) => {
+                    // If we don't have a selection or the slug doesn't equal the
+                    // current selection, fetch the data of the desired pig
+                    if state.pages.bulk.selected_import.as_ref().is_none_or(|selected| uuid != selected.id) {
+                        debug!(
+                            "The selection has been updated via url! Previous Selection: {:?}",
+                            state.pages.bulk.selected_import.as_ref()
+                        );
+                        self.fetch_url_selection.request(&BulkQuery::default().with_id(&uuid).with_limit(1));
+                    }
+                }
+                Err(err) => {
+                    state.pages.layout.display_error =
+                        Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
+                    update_url_hash(ctx, url, None);
+                    error!("Unable to parse hash \"{:?}\", err: {:?}", &stripped_hash, err);
+                }
+            }
+        } else if state.pages.bulk.selected_import.is_some() {
+            // if we have a pig selected, deselect it
+            debug!("Hash is empty but selection is {:?}, selecting None!", state.pages.bulk.selected_import.as_ref());
+            self.warn_if_dirty(ctx, state, url, DirtyAction::SelectImport(None));
+        }
+    }
+
     fn open(&mut self, _ctx: &Context, state: &mut ClientState, _url: &ParsedURL) {
         self.do_query();
         self.update_accepted_pigs(state);
@@ -104,6 +143,7 @@ impl BulkPageRender {
             state.pages.bulk.dirty = false;
             state.pages.bulk.selected_import = Some(import);
             self.raw_names = String::default();
+            update_url_hash(ctx, url, Some(state.pages.bulk.selected_import.as_ref().unwrap().id));
             self.do_query();
             self.update_accepted_pigs(state);
         }
@@ -118,7 +158,17 @@ impl BulkPageRender {
             self.all_imports = Some(imports);
         }
 
-        if let Some(pigs) = self.pig_api.fetch.received(state) {
+        if let Some(mut imports) = self.fetch_url_selection.received(state) {
+            // This request should have been made with limit = 1
+            // therefore, the only pig is the one we want
+            if let Some(sel) = imports.pop() {
+                self.warn_if_dirty(ctx, state, url, DirtyAction::SelectImport(Some(sel)));
+            } else {
+                self.not_found_modal = true;
+            }
+        }
+
+        if let Some(pigs) = self.fetch_accepted_pigs.received(state) {
             self.accepted_pigs = Some(pigs);
         }
     }
@@ -275,70 +325,6 @@ impl BulkPageRender {
         });
     }
 
-    fn show_modals(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
-        if self.dirty_modal != DirtyAction::None {
-            let modal = Modal::new("dirty")
-                .with_heading("Discard Unsaved Changes")
-                .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
-                .show_with_extras(ctx, |ui| {
-                    if ui.button("✔ Yes").clicked() {
-                        self.do_dirty_action(ui.ctx(), state, url);
-                    }
-                });
-
-            if modal.should_close() {
-                self.dirty_modal = DirtyAction::None;
-            }
-        }
-    }
-
-    /// Sends a fetch request for all results of the current query and clears
-    /// the list of current results
-    fn do_query(&mut self) {
-        self.all_imports = None;
-        self.bulk_api.fetch.request(&BulkQuery::default());
-    }
-
-    fn update_accepted_pigs(&mut self, state: &mut ClientState) {
-        self.accepted_pigs = None;
-        if let Some(selected_import) = state.pages.bulk.selected_import.as_ref() {
-            let len = selected_import.accepted.len();
-            let query = PigQuery::default().with_ids(&selected_import.accepted).with_limit(len as u32);
-            self.pig_api.fetch.request(query);
-        }
-    }
-
-    /// If the dirty var is true, warn the user with a modal before performing
-    /// the given action; otherwise, just do it
-    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: DirtyAction) {
-        self.dirty_modal = action;
-
-        // If the state isn't dirty, execute the action right away
-        // else if dirty_modal is not None, it will be shown
-        if !state.pages.bulk.dirty {
-            self.do_dirty_action(ctx, state, url);
-        }
-    }
-
-    fn do_dirty_action(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
-        match &self.dirty_modal {
-            DirtyAction::SelectImport(selection) => {
-                // Change the selection
-                state.pages.bulk.selected_import = selection.clone();
-                state.pages.bulk.selected_pig = None;
-                self.update_accepted_pigs(state);
-            }
-            DirtyAction::SelectPig(selection) => {
-                state.pages.bulk.selected_pig = selection.clone();
-            }
-            DirtyAction::None => {}
-        }
-
-        // Reset dirty state, how tf did i forget this?
-        self.dirty_modal = DirtyAction::None;
-        state.pages.bulk.dirty = false;
-    }
-
     pub fn import_properties_list(&mut self, ui: &mut Ui, state: &mut ClientState, is_admin: bool) {
         if let Some(import) = state.pages.bulk.selected_import.as_mut() {
             properties_list(ui).body(|mut body| {
@@ -477,5 +463,85 @@ impl BulkPageRender {
                 self.warn_if_dirty(ui.ctx(), state, url, DirtyAction::SelectPig(clicked));
             }
         }
+    }
+
+    fn show_modals(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
+        if self.dirty_modal != DirtyAction::None {
+            let modal = Modal::new("dirty")
+                .with_heading("Discard Unsaved Changes")
+                .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
+                .show_with_extras(ctx, |ui| {
+                    if ui.button("✔ Yes").clicked() {
+                        self.do_dirty_action(ui.ctx(), state, url);
+                    }
+                });
+
+            if modal.should_close() {
+                self.dirty_modal = DirtyAction::None;
+            }
+        }
+
+        if self.not_found_modal {
+            let modal = Modal::new("import_not_found")
+                .with_heading("Import Not Found")
+                .with_body("We couldn't find an import with that id.")
+                .show(ctx);
+
+            if modal.should_close() {
+                // Close the modal
+                self.not_found_modal = false;
+
+                // Update the route
+                update_url_hash(ctx, url, None);
+            }
+        }
+    }
+
+    /// Sends a fetch request for all results of the current query and clears
+    /// the list of current results
+    fn do_query(&mut self) {
+        self.all_imports = None;
+        self.bulk_api.fetch.request(&BulkQuery::default());
+    }
+
+    fn update_accepted_pigs(&mut self, state: &mut ClientState) {
+        self.accepted_pigs = None;
+        if let Some(selected_import) = state.pages.bulk.selected_import.as_ref() {
+            let len = selected_import.accepted.len();
+            let query = PigQuery::default().with_ids(&selected_import.accepted).with_limit(len as u32);
+            self.fetch_accepted_pigs.request(query);
+        }
+    }
+
+    /// If the dirty var is true, warn the user with a modal before performing
+    /// the given action; otherwise, just do it
+    fn warn_if_dirty(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL, action: DirtyAction) {
+        self.dirty_modal = action;
+
+        // If the state isn't dirty, execute the action right away
+        // else if dirty_modal is not None, it will be shown
+        if !state.pages.bulk.dirty {
+            self.do_dirty_action(ctx, state, url);
+        }
+    }
+
+    fn do_dirty_action(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
+        match &self.dirty_modal {
+            DirtyAction::SelectImport(selection) => {
+                // Change the selection
+                state.pages.bulk.selected_import = selection.clone();
+                state.pages.bulk.selected_pig = None;
+                update_url_hash(ctx, url, state.pages.bulk.selected_import.as_ref().and_then(|sel| Some(sel.id)));
+                self.update_accepted_pigs(state);
+            }
+            DirtyAction::SelectPig(selection) => {
+                state.pages.bulk.selected_pig = selection.clone();
+            }
+            DirtyAction::None => {}
+        }
+
+        // Reset dirty state, how tf did i forget this?
+        self.dirty_modal = DirtyAction::None;
+        state.pages.bulk.dirty = false;
     }
 }
