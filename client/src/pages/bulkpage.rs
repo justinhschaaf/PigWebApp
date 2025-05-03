@@ -6,7 +6,7 @@ use crate::ui::style::{THEME_ACCEPTED, THEME_REJECTED, TIME_FMT};
 use crate::ui::{add_properties_row, properties_list, selectable_list};
 use chrono::Local;
 use eframe::emath::Align;
-use egui::{Button, CentralPanel, Context, Label, Layout, RichText, ScrollArea, Sense, SidePanel, Ui, Widget};
+use egui::{Button, CentralPanel, Context, Label, Layout, OpenUrl, RichText, ScrollArea, Sense, SidePanel, Ui, Widget};
 use egui_extras::{Column, TableBuilder};
 use pigweb_common::bulk::{BulkImport, BulkQuery};
 use pigweb_common::pigs::{Pig, PigQuery};
@@ -225,6 +225,17 @@ impl BulkPageRender {
                 ui.add_space(8.0);
 
                 if let Some(import) = state.pages.bulk.selected_import.as_mut() {
+                    let go_to_selection = Button::new("⮩ Go To Pig");
+                    if let SelectedImportedPig::Accepted(pig) =
+                        state.pages.bulk.selected_pig.as_ref().unwrap_or(&SelectedImportedPig::Rejected("".to_owned()))
+                    {
+                        if ui.add(go_to_selection).clicked() {
+                            ui.ctx().open_url(OpenUrl::same_tab("/pigs#".to_owned() + pig.id.to_string().as_str()))
+                        }
+                    } else {
+                        ui.add_enabled(false, go_to_selection);
+                    }
+
                     properties_list(ui).body(|mut body| {
                         add_properties_row(&mut body, 40.0, "id", |ui| {
                             ui.code(import.id.to_string());
@@ -312,9 +323,7 @@ impl BulkPageRender {
             DirtyAction::SelectImport(selection) => {
                 // Change the selection
                 state.pages.bulk.selected_import = selection.clone();
-                if state.pages.bulk.selected_import.is_none() {
-                    state.pages.bulk.selected_pig = None;
-                }
+                state.pages.bulk.selected_pig = None;
                 self.update_accepted_pigs(state);
             }
             DirtyAction::SelectPig(selection) => {
