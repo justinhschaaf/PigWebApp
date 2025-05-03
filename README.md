@@ -31,7 +31,7 @@ server-side, as Pocketbase doesn't support serverside functions.
   change was.
 - [ ] **[MiniMessage](https://docs.advntr.dev/minimessage/index.html) formatting previews.** This will likely require a
   custom interpreter, unfortunately.
-- [ ] **Mass Add wizard to import en masse.** This should hold your hand through the entire import process, cleaning up
+- [x] **Mass Add wizard to import en masse.** This should hold your hand through the entire import process, cleaning up
   formatting, automatic duplicates, manual duplication checks, etc. There should be a way to save your progress.
 - [ ] **OAuth2 authentication for API endpoints.** This should be used to integrate with the plugin itself.
 
