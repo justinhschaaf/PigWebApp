@@ -76,6 +76,11 @@ async fn rocket() -> _ {
         panic!("Unable to migrate database to the latest schema.");
     };
 
+    // warn if groups are not configured
+    if config.groups.is_empty() {
+        warn!("No permission groups have been configured. All users will have all permissions, I hope you know what you're doing!!!")
+    }
+
     // Init Rocket
     let mut rocket = rocket::custom(figment)
         .manage(Mutex::new(db_connection))
@@ -88,11 +93,11 @@ async fn rocket() -> _ {
         .mount(USER_API_ROOT, get_user_api_routes());
 
     // Make sure OAuth2 uses custom config, if defined
-    // TODO add a warning if OIDC or Groups are not configured
     if let Some(oidc_config) = oidc_config {
         rocket =
             rocket.attach(OAuth2::<OpenIDAuth>::custom(HyperRustlsAdapter::default(), oidc_config.to_oauth_config()));
     } else {
+        warn!("Unable to find OIDC configuration. This is not supported, use at your own risk!!!");
         rocket = rocket.attach(OAuth2::<OpenIDAuth>::fairing("generic_oauth2"));
     }
 
