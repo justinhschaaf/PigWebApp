@@ -55,10 +55,9 @@ macro_rules! yuri {
 ///
 /// Example:
 /// ```rust
-/// use serde::Serialize;
 /// use pigweb_common::query;
 ///
-/// #[derive(Serialize)]
+/// #[derive(serde::Serialize)]
 /// struct SearchQuery {
 ///     pub name: String,
 ///     pub id: u16
