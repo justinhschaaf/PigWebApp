@@ -97,6 +97,7 @@ impl PigWebClient {
         // Get the updated renderer, in case a different page was loaded
         // then send the open command
         let url = Self::url_from_webinfo(&cc.integration_info.web_info);
+        res.layout.open(&cc.egui_ctx, &mut res.state, &url);
         res.page_render = res.state.route.get_renderer();
         res.page_render.open(&cc.egui_ctx, &mut res.state, &url);
 

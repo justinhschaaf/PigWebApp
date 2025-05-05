@@ -28,16 +28,16 @@ pub struct LayoutRender {
 
 impl Default for LayoutRender {
     fn default() -> Self {
-        let mut auth_api = AuthApi::default();
-
-        // Check whether the user is logged in
-        auth_api.is_authenticated.request(false); // this arg doesn't matter
-
-        Self { auth_api }
+        Self { auth_api: AuthApi::default() }
     }
 }
 
 impl RenderPage for LayoutRender {
+    fn open(&mut self, _ctx: &Context, _state: &mut ClientState, _url: &ParsedURL) {
+        // Check whether the user is logged in
+        self.auth_api.is_authenticated.request(false); // this arg doesn't matter
+    }
+
     fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _url: &ParsedURL) {
         // Handle all the incoming data
         self.process_promises(state);
