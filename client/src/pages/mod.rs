@@ -12,16 +12,25 @@ pub mod layout;
 pub mod pigpage;
 pub mod userpage;
 
+/// The unique page routes users can navigate to
 #[derive(Debug, PartialEq, Clone, Copy, serde::Deserialize, serde::Serialize)]
 pub enum Routes {
+    /// Manage all pigs on the list
     Pigs,
+
+    /// Import multiple names at once
     Bulk,
+
+    /// Manage app users
     Users,
+
+    /// 404 page
     NotFound,
 }
 
 impl Routes {
-    pub fn get_renderer(&mut self) -> Box<dyn RenderPage> {
+    /// Creates a new renderer responsible for the route
+    pub fn get_renderer(&self) -> Box<dyn RenderPage> {
         match self {
             Self::Pigs => Box::new(PigPageRender::default()),
             Self::Bulk => Box::new(BulkPageRender::default()),
@@ -31,11 +40,18 @@ impl Routes {
     }
 }
 
+/// Anything responsible for actually rendering a route. You should not expect
+/// any data stored in this struct to persist. For persistent data, create a
+/// separate struct and add it to [ClientState].
 #[allow(unused_variables)]
 pub trait RenderPage {
+    /// Runs when the web browser URL updates, both when the route changes and
+    /// stays the same.
     fn on_url_update(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {}
 
+    /// Runs when navigating to this page from a different route.
     fn open(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {}
 
+    /// Runs every frame to render the UI.
     fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL);
 }

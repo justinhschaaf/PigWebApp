@@ -8,6 +8,7 @@ use pigweb_common::users::Roles;
 use pigweb_common::{yuri, AUTH_API_ROOT};
 use urlable::ParsedURL;
 
+/// Persistent data storage for the common layout
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct Layout {
@@ -22,7 +23,11 @@ impl Default for Layout {
     }
 }
 
+/// The renderer for the main layout. This is run before the current route
+/// renderer and holds any elements common to all pages.
 pub struct LayoutRender {
+    /// API used to check whether the user is signed in upon first loading the
+    /// page.
     auth_api: AuthApi,
 }
 
@@ -53,6 +58,7 @@ impl RenderPage for LayoutRender {
 }
 
 impl LayoutRender {
+    /// Checks all APIs for data received from previously submitted requests
     fn process_promises(&mut self, state: &mut ClientState) {
         match self.auth_api.is_authenticated.resolve() {
             Status::Received(authorized) => state.authorized = authorized,
@@ -61,6 +67,7 @@ impl LayoutRender {
         }
     }
 
+    /// Show the menu/nav bar at the top of the screen
     fn populate_menu(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.add_space(2.0);
 
@@ -75,6 +82,7 @@ impl LayoutRender {
         // allowed
         let mut show_second_separator = false;
 
+        // link to each page the user can see
         if state.has_role(Roles::PigViewer) {
             let current = state.route == Routes::Pigs;
             if ui.add(SelectableLabel::new(current, " 🐖 Pigs ")).clicked() {
@@ -132,6 +140,7 @@ impl LayoutRender {
         });
     }
 
+    /// Show any page-specific modals which should be visible
     fn show_modals(&mut self, ctx: &Context, state: &mut ClientState) {
         if state.authorized.is_none() {
             let modal = Modal::new("Login")

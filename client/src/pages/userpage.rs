@@ -13,11 +13,26 @@ use std::collections::BTreeSet;
 use urlable::ParsedURL;
 use uuid::Uuid;
 
+/// Responsible for rendering [`crate::pages::Routes::Users`]
+///
+/// Admittedly, this page is somewhat rushed and is meant to get the minimum
+/// function in (expiring user sessions). Maybe one day I'll come back and
+/// actually add in UI for showing each user's details and rows. For now, it's
+/// good enough.
 pub struct UserPageRender {
+    /// Handles sending and receiving API data
     user_api: UserApi,
-    user_fetch_selection: UserFetchHandler,
+
+    /// Handles API data specifically when getting the selection from the URL
+    fetch_url_selection: UserFetchHandler,
+
+    /// The full list of users registered in the app
     users: Option<Vec<User>>,
+
+    /// The currently selected user
     selection: Option<User>,
+
+    /// The roles the currently selected user has access to
     roles: Option<BTreeSet<Roles>>,
 }
 
@@ -25,7 +40,7 @@ impl Default for UserPageRender {
     fn default() -> Self {
         Self {
             user_api: UserApi::default(),
-            user_fetch_selection: UserFetchHandler::default(),
+            fetch_url_selection: UserFetchHandler::default(),
             users: None,
             selection: None,
             roles: None,
@@ -49,7 +64,7 @@ impl RenderPage for UserPageRender {
                             "The selection has been updated via url! Previous Selection: {:?}",
                             self.selection.as_ref()
                         );
-                        self.user_fetch_selection.request(UserQuery::default().with_id(&uuid).with_limit(1));
+                        self.fetch_url_selection.request(UserQuery::default().with_id(&uuid).with_limit(1));
                     }
                 }
                 Err(err) => {
@@ -80,12 +95,15 @@ impl RenderPage for UserPageRender {
 
         self.process_promises(ui.ctx(), state, url);
 
+        // Draw the CentralPanel and the user table here because that's all this page is
+        // Use the helper function to populate the table body
         CentralPanel::default().show(ui.ctx(), |ui| {
             state.colorix.draw_background(ui.ctx(), false);
             ui.vertical_centered(|ui| {
                 ui.set_max_width(960.0);
                 ui.add_space(8.0);
 
+                // Only add the table if we have users loaded
                 if self.users.as_ref().is_some_and(|users| !users.is_empty()) {
                     TableBuilder::new(ui)
                         .striped(true)
@@ -111,6 +129,7 @@ impl RenderPage for UserPageRender {
                         })
                         .body(|mut body| self.add_user_rows(&mut body, state, url));
                 } else if self.users.is_none() {
+                    // you spin me...
                     ui.spinner();
                 }
             });
@@ -119,6 +138,7 @@ impl RenderPage for UserPageRender {
 }
 
 impl UserPageRender {
+    /// Checks all APIs for data received from previously submitted requests
     fn process_promises(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         if let Some(res) = self.user_api.fetch.received(state) {
             self.users = res.users;
@@ -135,7 +155,7 @@ impl UserPageRender {
             self.fetch_users();
         }
 
-        if let Some(mut users) = self.user_fetch_selection.received(state).and_then(|res| res.users) {
+        if let Some(mut users) = self.fetch_url_selection.received(state).and_then(|res| res.users) {
             // This request should have been made with limit = 1
             // therefore, the only user is the one we want
             if let Some(user) = users.pop() {
@@ -148,6 +168,9 @@ impl UserPageRender {
         }
     }
 
+    /// Populates the given table body with the loaded users. We have to do it
+    /// all in one shot rather than having a function per user or else borrow
+    /// checker complains
     fn add_user_rows(&mut self, body: &mut TableBody, state: &mut ClientState, url: &ParsedURL) {
         for user in self.users.as_ref().unwrap() {
             let selected = self.selection.as_ref().is_some_and(|sel| sel.id == user.id);
@@ -181,8 +204,11 @@ impl UserPageRender {
                     }
                 });
 
+                // Update the selection if the row is clicked. Logic can go here directly since there's
+                // no other way to select a user and since there's no dirty state to worry about
                 if row.response().clicked() {
                     let ctx = &row.response().ctx;
+                    // If the row is selected, unset the selection, else update the selection to this row
                     if selected {
                         self.selection = None;
                         self.roles = None;
@@ -198,6 +224,7 @@ impl UserPageRender {
         }
     }
 
+    /// Sends a fetch request for all [`User`]s in the system
     fn fetch_users(&mut self) {
         self.user_api.fetch.request(UserQuery::default())
     }

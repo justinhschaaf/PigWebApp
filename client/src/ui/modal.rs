@@ -1,15 +1,28 @@
 use eframe::emath::Align;
 use egui::{Context, Id, Layout, RichText, Ui, WidgetText};
 
+/// Wraps an [`egui::Modal`] with app-specific layout and formatting options.
 pub struct Modal {
+    /// The internal name of this modal, should be unique
     name: String,
+
+    /// The heading to display on the modal, defaults to the internal name
     heading: RichText,
+
+    /// The body text of this modal
     body: Option<WidgetText>,
+
+    /// Whether the user can dismiss this modal without consequences. Adds a
+    /// "Cancel" button which simply closes the modal without taking action.
     cancellable: bool,
+
+    /// Whether the modal should close.
     should_close: bool,
 }
 
 impl Modal {
+    /// Creates a new modal with the given name. This sets both the internal
+    /// name and the default heading.
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -20,26 +33,32 @@ impl Modal {
         }
     }
 
+    /// Sets the heading text
     pub fn with_heading(mut self, heading: impl Into<RichText>) -> Self {
         self.heading = heading.into();
         self
     }
 
+    /// Sets the body text of this modal
     pub fn with_body(mut self, body: impl Into<WidgetText>) -> Self {
         self.body = Some(body.into()); // ...once told me, the world is gonna roll me
                                        // i ain't the sharpest tool in the shed...
         self
     }
 
+    /// Sets whether the user can dismiss this modal without consequences. Adds
+    /// a "Cancel" button which simply closes the modal without taking action.
     pub fn cancellable(mut self, cancellable: bool) -> Self {
         self.cancellable = cancellable;
         self
     }
 
+    /// Show the modal. To add more buttons, use [`self.show_with_extras`].
     pub fn show(self, ctx: &Context) -> Self {
         self.show_with_extras(ctx, |_| {})
     }
 
+    /// Shows this modal with additional options for the user to select.
     pub fn show_with_extras(mut self, ctx: &Context, content: impl FnOnce(&mut Ui)) -> Self {
         let modal = egui::Modal::new(Id::new(self.name.to_owned())).show(ctx, |ui| {
             ui.set_width(320.0);
@@ -74,6 +93,7 @@ impl Modal {
         self
     }
 
+    /// Whether the modal should close.
     pub fn should_close(&self) -> bool {
         self.should_close
     }

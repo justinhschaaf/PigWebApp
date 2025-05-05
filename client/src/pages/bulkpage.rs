@@ -15,24 +15,28 @@ use log::{debug, error};
 use pigweb_common::bulk::{BulkImport, BulkPatch, BulkQuery, PatchAction};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
-use std::mem;
 use urlable::ParsedURL;
 use uuid::Uuid;
 
+/// An action which should only be performed when there are no unsaved changes.
+/// When this isn't [BulkPageDirtyAction::None], shows a modal with a warning
+/// before performing the action and resetting itself to None.
 // ( ͡° ͜ʖ ͡°)
 #[derive(Debug)]
 pub enum BulkPageDirtyAction {
+    /// Select a different import
     SelectImport(Option<BulkImport>),
+
+    /// Select a different pig
     SelectPig(Option<SelectedImportedPig>),
+
+    /// No pending action, don't prompt the user for anything
     None,
 }
 
-impl PartialEq for BulkPageDirtyAction {
-    fn eq(&self, other: &Self) -> bool {
-        mem::discriminant(self) == mem::discriminant(other)
-    }
-}
-
+/// A pig selected from the [`BulkImport`] list. Unifies selections from the
+/// pending, accepted, and rejected lists into one. To render the unified list,
+/// see [`BulkPageRender::selectable_mixed_list`].
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub enum SelectedImportedPig {
     Pending(String),
@@ -40,13 +44,18 @@ pub enum SelectedImportedPig {
     Rejected(String),
 }
 
+/// Persistent data storage for [`crate::pages::Routes::Bulk`].
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct BulkPage {
+    /// The currently selected import
     pub selected_import: Option<BulkImport>,
 
+    /// The currently selected pig/name in the import
     pub selected_pig: Option<SelectedImportedPig>,
 
+    /// When changing a pending name, save it here instead of modifying the
+    /// [`selected_pig`] to prevent sync issues
     pub updated_name: String,
 
     /// Whether we have unsaved changes
@@ -59,18 +68,44 @@ impl Default for BulkPage {
     }
 }
 
+/// Responsible for rendering [`crate::pages::Routes::Bulk`]
 pub struct BulkPageRender {
+    /// Handles sending and receiving API data
     bulk_api: BulkApi,
+
+    /// Handles API data specifically when getting the selection from the URL
     fetch_url_selection: BulkFetchHandler,
+
+    /// Handles API data to load the full data for all accepted pigs in the
+    /// [`BulkImport`]
     fetch_accepted_pigs: PigFetchHandler,
+
+    /// Handles API data to load any duplicate pigs from the currently selected
+    /// pending name
     fetch_duplicate_pigs: PigFetchHandler,
+
+    /// Handles API data when creating a pig from a pending name
     create_pig: PigCreateHandler,
+
+    /// All imports the user has access to see, shows up on the sidebar
     all_imports: Option<Vec<BulkImport>>,
+
+    /// The full data for all accepted pigs in the [`BulkImport`]
     accepted_pigs: Option<Vec<Pig>>,
+
+    /// All pigs similar to the selected pending name
     duplicate_pigs: Option<Vec<Pig>>,
+
+    /// The selection pig from [duplicate_pigs]
     selected_duplicate: Option<Pig>,
+
+    /// Modal which warns you when there's unsaved changes
     dirty_modal: BulkPageDirtyAction,
+
+    /// The text box to paste the names you wish to import into
     raw_names: String,
+
+    /// Whether to show the modal for a URL where no BulkImport exists
     not_found_modal: bool,
 }
 
@@ -143,6 +178,8 @@ impl RenderPage for BulkPageRender {
             self.populate_sidebar(ui, state, url);
         });
 
+        // there's a different panel layout depending on the selected import and how done it is
+        // hence creating the panels is handled in the function instead of here
         self.populate_center(ui, state, url);
 
         self.show_modals(ui.ctx(), state, url);
@@ -150,16 +187,21 @@ impl RenderPage for BulkPageRender {
 }
 
 impl BulkPageRender {
+    /// Checks all APIs for data received from previously submitted requests
     fn process_promises(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
+        // import was created
         if let Some(import) = self.bulk_api.create.received(state) {
             state.pages.bulk.dirty = false;
             state.pages.bulk.selected_import = Some(import);
             self.raw_names = String::default();
+
+            // refresh these things
             update_url_hash(ctx, url, Some(state.pages.bulk.selected_import.as_ref().unwrap().id));
             self.query_imports();
             self.update_accepted_pigs(state);
         }
 
+        // did the submitted changes go through?
         if let Some(patch) = self.bulk_api.patch.received(state) {
             // update our lists to reflect the changes made by the patch
             if let Some(sel) = state.pages.bulk.selected_import.as_mut() {
@@ -190,6 +232,7 @@ impl BulkPageRender {
             // TODO automatically select next pending name?
         }
 
+        // updates the left sidebar data
         if let Some(mut imports) = self.bulk_api.fetch.received(state) {
             imports.reverse(); // show newest first
             self.all_imports = Some(imports);
@@ -199,11 +242,17 @@ impl BulkPageRender {
             // This request should have been made with limit = 1
             // therefore, the only pig is the one we want
             if let Some(sel) = imports.pop() {
+                // this handler actually does both data from the url hash and data when the import
+                // is finished since the core logic is the same. this here is only relevant in the
+                // latter case.
+                //
+                // updates this item in the list of all imports with the fresh version
                 if let Some(imports) = self.all_imports.as_mut() {
                     let pos = imports.iter().position(|r| r.id.eq(&sel.id));
                     pos.and_then(|i| Some(imports[i] = sel.clone()));
                 }
 
+                // change the selection
                 self.warn_if_dirty(ctx, state, url, BulkPageDirtyAction::SelectImport(Some(sel)));
             } else {
                 self.not_found_modal = true;
@@ -236,6 +285,7 @@ impl BulkPageRender {
         }
     }
 
+    /// The sidebar listing all [`BulkImport`]s the user has access to
     fn populate_sidebar(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         ui.set_width(320.0);
         ui.add_space(8.0);
@@ -246,7 +296,6 @@ impl BulkPageRender {
         if self.all_imports.as_ref().is_some_and(|imports| !imports.is_empty()) {
             let clicked: Option<Option<BulkImport>> =
                 selectable_list(ui, self.all_imports.as_ref().unwrap(), |row, import| {
-                    // idfk why this wants us to clone selection, otherwise page is supposedly moved
                     let selected =
                         state.pages.bulk.selected_import.as_ref().is_some_and(|select| select.id == import.id);
                     row.set_selected(selected);
@@ -274,14 +323,19 @@ impl BulkPageRender {
         }
     }
 
+    /// Add the main content to the page, changes based on whether a
+    /// [`BulkImport`] is selected and whether it's finished.
     fn populate_center(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         if let Some(import) = state.pages.bulk.selected_import.as_ref() {
             if import.finished.is_some() {
+                // if we have a finished import selected, show the finished screen
                 self.populate_center_finished(ui, state, url);
             } else {
+                // if the selected import has pending names, show the editor
                 self.populate_center_edit(ui, state, url);
             }
         } else {
+            // show the create screen
             CentralPanel::default().show(ui.ctx(), |ui| {
                 ui.vertical_centered(|ui| {
                     self.populate_center_create(ui, state);
@@ -290,6 +344,7 @@ impl BulkPageRender {
         }
     }
 
+    /// Shows the create screen in the center of the page
     fn populate_center_create(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.set_max_width(540.0);
         state.colorix.draw_background(ui.ctx(), false);
@@ -299,12 +354,14 @@ impl BulkPageRender {
         ui.heading("Paste Names Below");
         ui.add_space(8.0);
 
+        // submit button
         let add_button = Button::new("+ Add All Pigs");
         if ui.add_enabled(!self.raw_names.is_empty(), add_button).clicked() {
             let names = self.raw_names.lines().map(|l: &str| l.to_string()).collect::<Vec<String>>();
             self.bulk_api.create.request(&names);
         }
 
+        // text box to paste all names into
         ui.centered_and_justified(|ui| {
             ScrollArea::vertical().show(ui, |ui| {
                 ui.text_edit_multiline(&mut self.raw_names);
@@ -312,7 +369,10 @@ impl BulkPageRender {
         });
     }
 
+    /// Shows the edit screen in the center of the page
     fn populate_center_edit(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
+        // right sidepanel showing duplicates of the selected pending pig
+        // this is added before the central panel because that must always come last
         SidePanel::right("duplicate_pigs").resizable(false).show(ui.ctx(), |ui| {
             ui.set_width(320.0);
 
@@ -320,12 +380,12 @@ impl BulkPageRender {
             ui.heading("Duplicates");
             ui.add_space(8.0);
 
+            // if we have anything in the name edit box and we have results to show
             if !state.pages.bulk.updated_name.is_empty()
                 && self.duplicate_pigs.as_ref().is_some_and(|pigs| !pigs.is_empty())
             {
                 let clicked: Option<Option<Pig>> =
                     selectable_list(ui, self.duplicate_pigs.as_ref().unwrap(), |row, pig| {
-                        // idfk why this wants us to clone selection, otherwise page is supposedly moved
                         let selected = self.selected_duplicate.as_ref().is_some_and(|select| select.id == pig.id);
                         row.set_selected(selected);
 
@@ -346,6 +406,7 @@ impl BulkPageRender {
             }
         });
 
+        // center panel with properties of the whole import and editor for the pending name
         CentralPanel::default().show(ui.ctx(), |ui| {
             ui.vertical_centered(|ui| {
                 ui.set_max_width(540.0);
@@ -357,8 +418,10 @@ impl BulkPageRender {
                 ui.heading("In Progress");
                 ui.add_space(8.0);
 
+                // show properties
                 self.import_properties_list(ui, state, is_admin);
 
+                // title for edit section
                 ui.add_space(8.0);
                 ui.heading("Add Names");
                 ui.add_space(8.0);
@@ -428,10 +491,13 @@ impl BulkPageRender {
         });
     }
 
+    /// Shows the import when there are no remaining names to add
     fn populate_center_finished(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
+        // center always comes last
         SidePanel::right("added_pigs").resizable(false).show(ui.ctx(), |ui| {
             ui.set_width(320.0);
 
+            // show all names which were a part of this import
             self.selectable_mixed_list(ui, state, url);
         });
 
@@ -446,22 +512,27 @@ impl BulkPageRender {
                 ui.heading("Import Complete");
                 ui.add_space(8.0);
 
+                // navigates to the currently selected pig in the right sidebar, assuming it was added
                 let go_to_selection = Button::new("⮩ Go To Pig");
                 if let SelectedImportedPig::Accepted(pig) =
-                    state.pages.bulk.selected_pig.as_ref().unwrap_or(&SelectedImportedPig::Rejected("".to_owned()))
+                    state.pages.bulk.selected_pig.as_ref().unwrap_or(&SelectedImportedPig::Rejected(String::default()))
                 {
                     if ui.add(go_to_selection).clicked() {
                         ui.ctx().open_url(OpenUrl::same_tab("/pigs#".to_owned() + pig.id.to_string().as_str()))
                     }
                 } else {
+                    // there is either no pig selected or the name was rejected, disable the button
                     ui.add_enabled(false, go_to_selection);
                 }
 
+                // show the import properties
                 self.import_properties_list(ui, state, is_admin);
             });
         });
     }
 
+    /// Adds a table with the [`BulkImport`] properties to the ui. Hides fields
+    /// which the user should not see depending on their permission level
     pub fn import_properties_list(&mut self, ui: &mut Ui, state: &mut ClientState, is_admin: bool) {
         if let Some(import) = state.pages.bulk.selected_import.as_mut() {
             properties_list(ui).body(|mut body| {
@@ -469,6 +540,7 @@ impl BulkPageRender {
                     ui.code(import.id.to_string());
                 });
 
+                // creator is only relevant if the user can see imports which aren't theirs
                 if is_admin {
                     add_properties_row(&mut body, 40.0, "created by", |ui| {
                         // TODO actually bother fetching the user data
@@ -481,6 +553,7 @@ impl BulkPageRender {
                     ui.label(start_time.format(TIME_FMT).to_string());
                 });
 
+                // only show finished time if we have it
                 if let Some(finished) = import.finished {
                     add_properties_row(&mut body, 40.0, "finished at", |ui| {
                         let finish_time = finished.and_utc().with_timezone(&Local);
@@ -488,6 +561,7 @@ impl BulkPageRender {
                     });
                 }
 
+                // only show pending amount if we have it
                 let pending = import.pending.len();
                 if pending > 0 {
                     add_properties_row(&mut body, 40.0, "pending", |ui| {
@@ -506,9 +580,13 @@ impl BulkPageRender {
         }
     }
 
+    /// Add the mixed list of pending names, accepted pigs, and rejected names
+    /// to the ui, with one item in the list being selectable at a time.
     pub fn selectable_mixed_list(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
+        // whether an item in the list was clicked, and if so, whether it was selected or deselected
         let mut clicked: Option<Option<SelectedImportedPig>> = None;
 
+        // if we have an import
         if let Some(import) = state.pages.bulk.selected_import.as_ref() {
             TableBuilder::new(ui)
                 .striped(true)
@@ -517,6 +595,7 @@ impl BulkPageRender {
                 .sense(Sense::click())
                 .cell_layout(Layout::left_to_right(Align::Center))
                 .body(|mut body| {
+                    // add the pending names
                     import.pending.iter().for_each(|e| {
                         body.row(18.0, |mut row| {
                             let selected = state.pages.bulk.selected_pig.as_ref().is_some_and(|sel| match sel {
@@ -541,6 +620,7 @@ impl BulkPageRender {
                         });
                     });
 
+                    // add the accepted pigs with green name color
                     if let Some(accepted) = self.accepted_pigs.as_ref() {
                         accepted.iter().for_each(|e| {
                             body.row(18.0, |mut row| {
@@ -570,6 +650,7 @@ impl BulkPageRender {
                         });
                     }
 
+                    // add the rejected names with red text color
                     import.rejected.iter().for_each(|e| {
                         body.row(18.0, |mut row| {
                             let selected = state.pages.bulk.selected_pig.as_ref().is_some_and(|sel| match sel {
@@ -595,15 +676,17 @@ impl BulkPageRender {
                     });
                 });
 
-            // Check if we have an action to do
+            // Check if a name was selected or deselected and request an update to the selection if so
             if let Some(clicked) = clicked {
                 self.warn_if_dirty(ui.ctx(), state, url, BulkPageDirtyAction::SelectPig(clicked));
             }
         }
     }
 
+    /// Show any page-specific modals which should be visible
     fn show_modals(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
-        if self.dirty_modal != BulkPageDirtyAction::None {
+        if !matches!(self.dirty_modal, BulkPageDirtyAction::None) {
+            // TODO util function returns Option<bool> with bool being whether to perform the action
             let modal = Modal::new("dirty")
                 .with_heading("Discard Unsaved Changes")
                 .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
@@ -634,18 +717,22 @@ impl BulkPageRender {
         }
     }
 
-    /// Sends a fetch request for all results of the current query and clears
-    /// the list of current results
+    /// Sends a fetch request for all [`BulkImport`]s the user can see and
+    /// clears the list of current results
     fn query_imports(&mut self) {
         self.all_imports = None;
         self.bulk_api.fetch.request(&BulkQuery::default());
     }
 
+    /// Sends a fetch request for all duplicates of the currently selected
+    /// pending name and clears the list of current results
     fn query_duplicates(&mut self, state: &mut ClientState) {
         self.duplicate_pigs = None;
         self.fetch_duplicate_pigs.request(PigQuery::default().with_name(&state.pages.bulk.updated_name));
     }
 
+    /// Clears the list of data for accepted pigs in this [`BulkImport`] and
+    /// requests fresh data
     fn update_accepted_pigs(&mut self, state: &mut ClientState) {
         self.accepted_pigs = None;
         if let Some(selected_import) = state.pages.bulk.selected_import.as_ref() {
@@ -667,6 +754,8 @@ impl BulkPageRender {
         }
     }
 
+    /// Performs the dirty action, resets all relevant variables, and refreshes
+    /// all relevant data
     fn do_dirty_action(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         match &self.dirty_modal {
             BulkPageDirtyAction::SelectImport(selection) => {

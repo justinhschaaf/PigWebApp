@@ -56,15 +56,18 @@ pub struct ApiError {
 }
 
 impl ApiError {
+    /// Creates a new ApiError with the given description
     pub fn new(description: String) -> Self {
         Self { code: None, reason: None, description }
     }
 
+    /// Sets the HTTP status code to the given value
     pub fn with_code(mut self, code: u16) -> Self {
         self.code = Some(code);
         self
     }
 
+    /// Sets the short reason the error occurred, used as the title
     pub fn with_reason(mut self, reason: String) -> Self {
         self.reason = Some(reason);
         self
@@ -89,9 +92,12 @@ impl From<std::io::Error> for ApiError {
     }
 }
 
-/// Defines an individual API endpoint handler. Each handler has three methods:
+/// Defines an individual API endpoint handler. Each handler has the following
+/// functions:
 /// - `request(input)` submits a request to the API
 /// - `resolve()` checks whether the request received a response and returns it
+/// - `received(state)` returns the response value as an option and performs
+///   default error handling if something went wrong (shows a modal)
 /// - `discard()` forgets the previous request which was made
 ///
 /// This is designed around immediate-mode GUIs or anything which needs to be
@@ -102,7 +108,34 @@ impl From<std::io::Error> for ApiError {
 /// - The name of the handler struct
 /// - The input type expected when making a request
 /// - The output type expected from the server
-/// - The expression actually making the request, should return a tokio::sync::oneshot::Receiver
+/// - The expression actually making the request, should return a [`Receiver`]
+///
+/// Example:
+/// ```rust
+/// endpoint!(PigDeleteHandler, Uuid, Response, |input: Uuid| {
+///     let (tx, rx) = oneshot::channel();
+///
+///     // Convert method type to DELETE, ::get method is just a good starter
+///     let req = Request {
+///         method: "DELETE".to_owned(),
+///         credentials: Credentials::SameOrigin,
+///         headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
+///         ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = input.to_string().as_str())))
+///     };
+///
+///     // Submit the request, no fancy processing needed for this one
+///     fetch_and_send(req, tx, |res| {
+///         // Handle errors
+///         if res.status >= 400 {
+///             return Err(res.into());
+///         }
+///
+///         Ok(res)
+///     });
+///
+///     rx
+/// });
+/// ```
 // this must defined BEFORE the individual endpoints
 macro_rules! endpoint {
     ($name:ident, $input:ty, $output:ty, $requester:expr) => {
@@ -165,8 +198,10 @@ macro_rules! endpoint {
     };
 }
 
+/// API for the current user's session and permissions
 #[derive(Debug, Default)]
 pub struct AuthApi {
+    /// If the user is signed in, returns a list of roles, otherwise [None]
     pub is_authenticated: AuthCheckHandler,
 }
 
@@ -196,10 +231,18 @@ endpoint!(AuthCheckHandler, bool, Option<BTreeSet<Roles>>, |_ignored: bool| {
     rx
 });
 
+/// The API for importing multiple names at a time
 #[derive(Debug, Default)]
 pub struct BulkApi {
+    /// Creates a new import from the given list of names
     pub create: BulkCreateHandler,
+
+    /// Applies the given changes to the import, returning the changes for
+    /// convenience upon success
     pub patch: BulkPatchHandler,
+
+    /// Fetches all imports which the user can access and matches the given
+    /// query
     pub fetch: BulkFetchHandler,
 }
 
@@ -286,7 +329,7 @@ endpoint!(BulkFetchHandler, &BulkQuery, Vec<BulkImport>, |input: &BulkQuery| {
     rx
 });
 
-/// Represents the API for working with pigs
+/// The API for working with pigs
 #[derive(Debug, Default)]
 pub struct PigApi {
     /// Create a new pig given the name as a &str
@@ -401,7 +444,7 @@ endpoint!(PigFetchHandler, PigQuery, Vec<Pig>, |params: PigQuery| {
     rx
 });
 
-/// Represents the API for working with users
+/// The API for working with users
 #[derive(Debug, Default)]
 pub struct UserApi {
     /// Fetch a list of user structs--or a mapping of their uuids to usernames,
@@ -484,6 +527,8 @@ endpoint!(UserExpireHandler, Uuid, User, |input: Uuid| {
     rx
 });
 
+/// Submits the given request, then if successful, processes the on_response
+/// callback and submits the return value from it to the tx channel sender.
 fn fetch_and_send<T: 'static + Send>(
     req: Request,
     tx: Sender<Result<T, ApiError>>,
@@ -499,6 +544,8 @@ fn fetch_and_send<T: 'static + Send>(
                 on_response(res)
             }
             Err(msg) => {
+                // when we reach this branch, it's *usually* that we didn't get a response.
+                // HTTP error codes are handled by the success branch here.
                 error!("Encountered fetch error: {:?}", msg.to_owned());
                 Err(ApiError::new(msg.to_owned()).with_reason("No response".to_owned()))
             }
@@ -507,15 +554,22 @@ fn fetch_and_send<T: 'static + Send>(
     });
 }
 
+/// Determines the status of a submitted request
 fn check_response_status<T>(maybe: &mut MaybeWaiting<T>) -> Status<T> {
     match maybe {
+        // we have a request to check up on
         Some(receiver) => match receiver.try_recv() {
+            // the channel got a response from the request
             Ok(res) => match res {
+                // response was successful
                 Ok(t) => Status::Received(t),
+                // there was an error
                 Err(e) => Status::Errored(e),
             },
+            // we're still waiting on a response
             Err(_) => Status::Pending,
         },
+        // we're not waiting on any request
         None => Status::Pending,
     }
 }

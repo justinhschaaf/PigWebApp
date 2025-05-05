@@ -11,30 +11,30 @@ use egui_flex::{item, Flex, FlexJustify};
 use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
 use pigweb_common::users::Roles;
-use std::mem;
 use urlable::ParsedURL;
 use uuid::Uuid;
 
+/// An action which should only be performed when there are no unsaved changes.
+/// When this isn't [PigPageDirtyAction::None], shows a modal with a warning
+/// before performing the action and resetting itself to None.
 // ( ͡° ͜ʖ ͡°)
 #[derive(Debug)]
 enum PigPageDirtyAction {
+    /// Create a new pig, navigating away from the current selection
     Create(String),
+
+    /// Select a different pig
     Select(Option<Pig>),
+
+    /// No pending action, don't prompt the user for anything
     None,
 }
 
-impl PartialEq for PigPageDirtyAction {
-    fn eq(&self, other: &Self) -> bool {
-        mem::discriminant(self) == mem::discriminant(other)
-    }
-}
-
+/// Persistent data storage for [`crate::pages::Routes::Pigs`].
+// shit we care about saving
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct PigPage {
-    /*
-     * shit we care about saving
-     */
     /// The current search query
     query: String,
 
@@ -51,10 +51,9 @@ impl Default for PigPage {
     }
 }
 
+/// Responsible for rendering [`crate::pages::Routes::Pigs`]
+// shit we don't care about saving as it's actively in use
 pub struct PigPageRender {
-    /*
-     * shit we don't care about saving as it's actively in use
-     */
     /// Handles sending and receiving API data
     pig_api: PigApi,
 
@@ -147,6 +146,7 @@ impl RenderPage for PigPageRender {
 }
 
 impl PigPageRender {
+    /// Checks all APIs for data received from previously submitted requests
     fn process_promises(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         if let Some(pig) = self.pig_api.create.received(state) {
             state.pages.pigs.dirty = false;
@@ -182,6 +182,7 @@ impl PigPageRender {
         }
     }
 
+    /// The sidebar listing all pigs which match the current search query
     fn populate_sidebar(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         ui.set_width(320.0);
         ui.add_space(8.0);
@@ -212,7 +213,6 @@ impl PigPageRender {
         // TODO add pagination
         if self.query_results.as_ref().is_some_and(|pigs| !pigs.is_empty()) {
             let clicked: Option<Option<Pig>> = selectable_list(ui, self.query_results.as_ref().unwrap(), |row, pig| {
-                // idfk why this wants us to clone selection, otherwise page is supposedly moved
                 let selected = state.pages.pigs.selection.as_ref().is_some_and(|select| select.id == pig.id);
                 row.set_selected(selected);
 
@@ -238,6 +238,7 @@ impl PigPageRender {
         }
     }
 
+    /// Adds the pig details/editor to the center panel if a pig is selected
     fn populate_center(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.set_max_width(540.0);
         state.colorix.draw_background(ui.ctx(), false);
@@ -269,6 +270,7 @@ impl PigPageRender {
                 ui.add_space(4.0);
             }
 
+            // Pig properties table
             properties_list(ui).body(|mut body| {
                 add_properties_row(&mut body, 40.0, "id", |ui| {
                     ui.code(pig.id.to_string());
@@ -278,6 +280,7 @@ impl PigPageRender {
                     // yes, all this is necessary
                     // centered_and_justified makes the text box fill the value cell
                     // ScrollArea lets you scroll when it's too big
+                    // and we must define the layouter as a separate var or else borrow checker gets PISSED
                     ui.centered_and_justified(|ui| {
                         ScrollArea::vertical().show(ui, |ui| {
                             let mut layouter = wrapped_singleline_layouter();
@@ -302,6 +305,7 @@ impl PigPageRender {
         }
     }
 
+    /// Show any page-specific modals which should be visible
     fn show_modals(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         if self.delete_modal {
             let modal = Modal::new("delete")
@@ -322,7 +326,7 @@ impl PigPageRender {
             }
         }
 
-        if self.dirty_modal != PigPageDirtyAction::None {
+        if !matches!(self.dirty_modal, PigPageDirtyAction::None) {
             let modal = Modal::new("dirty")
                 .with_heading("Discard Unsaved Changes")
                 .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
@@ -372,6 +376,8 @@ impl PigPageRender {
         }
     }
 
+    /// Performs the dirty action, resets all relevant variables, and refreshes
+    /// all relevant data
     fn do_dirty_action(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         match &self.dirty_modal {
             PigPageDirtyAction::Create(name) => self.pig_api.create.request(name),

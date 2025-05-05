@@ -4,8 +4,13 @@ use egui::{Button, CentralPanel, OpenUrl, Ui};
 use egui_flex::{item, Flex, FlexJustify};
 use urlable::ParsedURL;
 
+/// Responsible for rendering [`crate::pages::Routes::NotFound`] (and possibly
+/// other errors)
 pub struct ErrPageRender {
+    /// The title/headline of the error
     head: String,
+
+    /// A further explanation of the error
     body: String,
 }
 
@@ -47,6 +52,7 @@ impl RenderPage for ErrPageRender {
 }
 
 impl ErrPageRender {
+    /// Creates a renderer for 404 not found errors
     fn not_found() -> Self {
         Self { head: "Page Not Found".to_owned(), body: "That pig is in another castle!".to_owned() }
     }
