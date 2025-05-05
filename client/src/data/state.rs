@@ -6,7 +6,10 @@ use egui_colors::Colorix;
 use pigweb_common::users::Roles;
 use std::collections::BTreeSet;
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+/// Persistent data stored on the user's device by the client. This should be
+/// used for data the user is actively working with where changes may be lost
+/// without persistence. Session cookies are handled by the server.
+// Derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct ClientState {
@@ -31,6 +34,8 @@ impl Default for ClientState {
 }
 
 impl ClientState {
+    /// Whether the authenticated user has the given role. Returns `false` if
+    /// the user isn't authenticated or doesn't have access
     pub fn has_role(&self, role: Roles) -> bool {
         self.authorized.as_ref().is_some_and(|roles| roles.contains(&role))
     }

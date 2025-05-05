@@ -7,23 +7,19 @@ use eframe::WebInfo;
 use egui::Context;
 use urlable::{parse_url, ParsedURL};
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
-#[derive(serde::Deserialize, serde::Serialize)]
-#[serde(default)] // if we add new fields, give them default values when deserializing old state
+/// The client for the Pig Web App, pretty much everything runs through this
+/// struct.
 pub struct PigWebClient {
     /// Global app info
     state: ClientState,
 
-    #[serde(skip)]
     /// The layout renderer
     layout: LayoutRender,
 
     /// The currently open page renderer
-    #[serde(skip)]
     page_render: Box<dyn RenderPage>,
 
     /// The last hash which was requested
-    #[serde(skip)]
     last_hash: String,
 }
 
@@ -39,7 +35,7 @@ impl Default for PigWebClient {
 }
 
 impl eframe::App for PigWebClient {
-    /// Called each time the UI needs repainting, which may be many times per second.
+    // Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             // get the current url
@@ -76,9 +72,9 @@ impl eframe::App for PigWebClient {
         });
     }
 
-    /// Called by the framework to save state before shutdown.
+    // Called by the framework to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
-        eframe::set_value(storage, Self::APP_KEY, &self);
+        eframe::set_value(storage, Self::APP_KEY, &self.state);
     }
 }
 
@@ -90,11 +86,13 @@ impl PigWebClient {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Load previous app state (if any) or default state data
         // Note that you must enable the `persistence` feature for this to work.
-        let mut res: PigWebClient =
+        let mut state: ClientState =
             cc.storage.and_then(|storage| eframe::get_value(storage, Self::APP_KEY)).unwrap_or_default();
 
         // Setup styles
-        res.state.colorix = style::set_styles(cc);
+        state.colorix = style::set_styles(cc);
+
+        let mut res: PigWebClient = Self { state, ..Self::default() };
 
         // Get the updated renderer, in case a different page was loaded
         // then send the open command
@@ -105,6 +103,7 @@ impl PigWebClient {
         res
     }
 
+    /// Parses current web browser URL from eframe
     fn url_from_webinfo(info: &WebInfo) -> ParsedURL {
         let mut url = parse_url(info.location.url.as_str());
         url.hash = info.location.hash.to_owned();
