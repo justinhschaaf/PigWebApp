@@ -2666,7 +2666,6 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "diesel",
- "diesel_full_text_search",
  "diesel_migrations",
  "jsonwebtoken",
  "pigweb_common",

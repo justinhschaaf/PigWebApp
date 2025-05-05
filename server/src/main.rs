@@ -23,6 +23,7 @@ use rocket_oauth2::{HyperRustlsAdapter, OAuth2};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+/// Embeds all migrations to set up the Postgres database in the app binary
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("data/migrations");
 
 /// Create a route for any url relative to the website root. If not found,
@@ -58,7 +59,7 @@ async fn api_root() -> &'static str {
 "
 }
 
-// Start the web sever using the launch macro
+/// Starts the web sever
 #[launch]
 async fn rocket() -> _ {
     // Load the config here for the db connection and client path

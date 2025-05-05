@@ -14,10 +14,13 @@ use std::ops::DerefMut;
 use std::sync::Mutex;
 use uuid::Uuid;
 
+/// Returns a list of all bulk api routes
 pub fn get_bulk_api_routes() -> Vec<Route> {
     routes![api_bulk_create, api_bulk_patch, api_bulk_fetch]
 }
 
+/// Starts a bulk import from the JSON list of pig names given in the request
+/// body. Returns the BulkImport as JSON.
 #[post("/create", data = "<names>")]
 async fn api_bulk_create(
     auth_user: AuthenticatedUser,
@@ -127,6 +130,8 @@ async fn api_bulk_create(
     }
 }
 
+/// Updates a BulkImport with the actions in the request body. Returns HTTP
+/// status code 200 if changes are successful.
 #[patch("/patch", data = "<actions>")]
 async fn api_bulk_patch(
     auth_user: AuthenticatedUser,
@@ -187,6 +192,7 @@ async fn api_bulk_patch(
     }
 }
 
+/// Returns a JSON list of BulkImports which match the given query.
 #[get("/fetch?<query..>")]
 async fn api_bulk_fetch(
     auth_user: AuthenticatedUser,

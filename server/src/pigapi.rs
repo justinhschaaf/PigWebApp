@@ -11,10 +11,12 @@ use rocket::{Route, State};
 use std::ops::DerefMut;
 use std::sync::Mutex;
 
+/// Returns a list of all pig api routes
 pub fn get_pig_api_routes() -> Vec<Route> {
     routes![api_pig_create, api_pig_update, api_pig_delete, api_pig_fetch]
 }
 
+/// Creates a new pig with the given name, responding with it if successful.
 #[post("/create?<name>")]
 async fn api_pig_create(
     auth_user: AuthenticatedUser,
@@ -44,6 +46,8 @@ async fn api_pig_create(
     }
 }
 
+/// Performs an in-place update, replacing all mutable fields for the given pig.
+/// Responds with the updated pig if successful.
 #[put("/update", data = "<pig>")]
 async fn api_pig_update(
     auth_user: AuthenticatedUser,
@@ -73,6 +77,8 @@ async fn api_pig_update(
     }
 }
 
+/// Deletes the pig with the given [`Uuid`], returning HTTP status 204 if
+/// successful
 #[delete("/delete?<id>")]
 async fn api_pig_delete(
     auth_user: AuthenticatedUser,
@@ -98,6 +104,7 @@ async fn api_pig_delete(
     }
 }
 
+/// Returns a JSON list of pigs which match the given query.
 #[get("/fetch?<query..>")]
 async fn api_pig_fetch(
     auth_user: AuthenticatedUser,

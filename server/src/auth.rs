@@ -21,32 +21,43 @@ use std::collections::BTreeSet;
 use std::ops::DerefMut;
 use std::sync::Mutex;
 
+/// A [Request Guard](FromRequest) which requires the user be signed in with an
+/// active session before accessing the given route.
 pub struct AuthenticatedUser {
+    /// The claims retrieved from the JWT provided by the OIDC provider
     pub jwt: Option<Claims>,
+
+    /// The user data backing this AuthenticatedUser
     pub user: User,
 }
 
 impl AuthenticatedUser {
+    /// Removes the app's session cookies and returns HTTP status code 401
     fn invalidate_session(cookies: &CookieJar) -> Outcome<AuthenticatedUser, ()> {
         cookies.remove_private(COOKIE_JWT);
         cookies.remove_private(COOKIE_USER);
         Error((Status::Unauthorized, ()))
     }
 
+    /// Whether this user is in a group which provides the given Role.
+    ///
+    /// ***Always returns true if OIDC or groups are not configured.***
     pub fn has_role(&self, config: &Config, role: Roles) -> bool {
         user_has_role(config, &self.user, role)
     }
 
+    /// Gets all roles this user has been provided by their groups.
+    ///
+    /// ***Returns a set of all roles if the OIDC or groups are not configured.***
     pub fn get_roles(&self, config: &Config) -> BTreeSet<Roles> {
         get_user_roles(config, &self.user)
     }
 }
 
-// resolves E0195, somehow...
-// https://stackoverflow.com/a/69271844
+// adding async_trait resolves E0195, somehow... https://stackoverflow.com/a/69271844
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AuthenticatedUser {
-    // This must not be anything for try_outcome!() to work
+    // This must be nothing for try_outcome!() to work
     type Error = ();
 
     // see https://github.com/jebrosen/rocket_oauth2/blob/b0971d6d6e0e1422306e397bc3e018c1ec822013/examples/user_info/src/main.rs#L18-L30
@@ -96,7 +107,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                     if let Ok(res) = sql_res {
                         if res.len() > 0 {
                             if let Some(db_exp) = res[0] {
-                                // If the db expiration is less than now, invalidate
+                                // If the expiration as per the db has passed, invalidate the session
                                 if db_exp.to_owned() <= Utc::now().naive_utc() {
                                     return AuthenticatedUser::invalidate_session(cookies);
                                 }
@@ -215,7 +226,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
 
 /// Represents the claims returned by a JWT response. Includes all [mandatory
 /// claims](https://openid.net/specs/openid-connect-core-1_0.html#IDToken) as
-/// defined in the spec along with the few[optional claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims)
+/// defined in the spec along with the few [optional claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims)
 /// we care about. Any other information is discarded.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
@@ -250,17 +261,21 @@ pub struct Claims {
     pub groups: Option<Vec<String>>,
 }
 
+/// Returns a list of all auth api routes
 pub fn get_auth_api_routes() -> Vec<Route> {
     routes![is_authenticated, oidc_login, oidc_response, oidc_logout]
 }
 
+/// Checks whether the user has a valid session.
+/// - If the user isn't signed in, returns status 401 unauthorized
+/// - If the user is signed in, returns status 200 with a JSON list of all roles
+///   the user has.
 #[get("/")]
 async fn is_authenticated(user: AuthenticatedUser, config: &State<Config>) -> Json<BTreeSet<Roles>> {
-    // If the user isn't signed in, it should return a 401 unauthorized
     Json(user.get_roles(config))
 }
 
-// Redirects users to the login page
+/// Redirects users to the configured OIDC login page
 #[get("/oidc/login")]
 async fn oidc_login(oauth2: OAuth2<OpenIDAuth>, config: &State<Config>, cookies: &CookieJar<'_>) -> Redirect {
     // Only force the user to login if it's actually configured
@@ -274,8 +289,8 @@ async fn oidc_login(oauth2: OAuth2<OpenIDAuth>, config: &State<Config>, cookies:
     Redirect::to("/")
 }
 
-// Completes the token exchange with the OAuth provider, creates a session
-// cookie, then redirects the user to the app root
+/// Completes the token exchange with the OAuth provider, creates a session
+/// cookie, then redirects the user to the app root.
 #[get("/oidc/response")]
 async fn oidc_response(
     token_response: TokenResponse<OpenIDAuth>,
@@ -338,8 +353,8 @@ async fn oidc_response(
     Err(Status::InternalServerError)
 }
 
-// Removes the user's current session cookies and redirects them to the OIDC
-// provider logout page (if present) or the root page
+/// Removes the user's current session cookies and redirects them to the OIDC
+/// provider logout page (if present) or the root page
 #[get("/oidc/logout")]
 async fn oidc_logout(config: &State<Config>, cookies: &CookieJar<'_>) -> Redirect {
     // Remove the current JWT and USER cookies
@@ -349,13 +364,10 @@ async fn oidc_logout(config: &State<Config>, cookies: &CookieJar<'_>) -> Redirec
     // TODO update session exp in db?
 
     // Redirect the user to the OIDC provider logout page, if present
-    // we have to save the is_some boolean or else rust complains about using config
-    // this is genuinely stupid it's a fucking boolean on an immutable object
-    let is_some = config.oidc.as_ref().is_some();
-    if is_some {
-        if let Some(logout_uri) = config.oidc.as_ref().unwrap().logout_uri.to_owned() {
-            return Redirect::to(logout_uri);
-        }
+    // use `and_then` to bypass having to save `config.oidc.is_some()` separately
+    // look at past revisions of this file for more context
+    if let Some(logout_uri) = config.oidc.as_ref().and_then(|oidc_config| oidc_config.logout_uri.to_owned()) {
+        return Redirect::to(logout_uri);
     }
 
     // Redirect the user to root as a last resort

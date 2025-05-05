@@ -12,10 +12,14 @@ use std::ops::DerefMut;
 use std::sync::Mutex;
 use uuid::Uuid;
 
+/// Returns a list of all user api routes
 pub fn get_user_api_routes() -> Vec<Route> {
     routes![api_user_fetch, api_user_roles, api_user_expire]
 }
 
+/// Returns a list of users which match the given query. If the requester has
+/// [`Roles::UserViewer`], they will be sent the full data for each user.
+/// Otherwise, only a mapping of ids to usernames will be returned.
 #[get("/fetch?<query..>")]
 async fn api_user_fetch(
     auth_user: AuthenticatedUser,
@@ -50,6 +54,8 @@ async fn api_user_fetch(
     }
 }
 
+/// Returns a mapping of user ids to the roles each [`User`] has been provided
+/// by their groups.
 #[get("/roles?<query..>")]
 async fn api_user_roles(
     auth_user: AuthenticatedUser,
@@ -82,6 +88,9 @@ async fn api_user_roles(
     }
 }
 
+/// Invalidates the session of the [`User`] with the given id. The target will
+/// only notice the next time they attempt to make a request requiring them to
+/// be authenticated, at which point their session cookies will be cleared.
 #[patch("/expire?<id>")]
 async fn api_user_expire(
     auth_user: AuthenticatedUser,
@@ -98,6 +107,7 @@ async fn api_user_expire(
     let uuid = parse_uuid(id)?;
     let now = Utc::now().naive_utc();
 
+    // Tell the DB to change the expiration for the user with the given id to the current time
     let sql_res = diesel::update(schema::users::table)
         .filter(schema::users::columns::id.eq(uuid))
         .set(schema::users::columns::session_exp.eq(now))
@@ -111,7 +121,11 @@ async fn api_user_expire(
     }
 }
 
+/// Whether the user is in a group which provides the role.
+///
+/// ***Always returns true if OIDC or groups are not configured.***
 pub fn user_has_role(config: &Config, user: &User, role: Roles) -> bool {
+    // If OIDC isn't configured or the list of all roles the user has contains this one, return true
     if config.oidc.is_none() || get_user_roles(config, user).contains(&role) {
         return true;
     }
@@ -119,6 +133,9 @@ pub fn user_has_role(config: &Config, user: &User, role: Roles) -> bool {
     false
 }
 
+/// Gets all roles the user has been provided by their groups.
+///
+/// ***Returns a set of all roles if the OIDC or groups are not configured.***
 pub fn get_user_roles(config: &Config, user: &User) -> BTreeSet<Roles> {
     // If groups aren't configured, all users have all access
     if config.oidc.is_none() || config.groups.is_empty() {
