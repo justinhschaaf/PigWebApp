@@ -169,7 +169,7 @@ macro_rules! endpoint {
                         if err.code == Some(401) {
                             state.authorized = None;
                         } else {
-                            state.pages.layout.display_error = Some(err);
+                            state.pages.layout.display_error.push(err);
                         }
                         None
                     }

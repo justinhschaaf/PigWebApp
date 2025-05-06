@@ -106,8 +106,11 @@ impl RenderPage for PigPageRender {
                     }
                 }
                 Err(err) => {
-                    state.pages.layout.display_error =
-                        Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
+                    state
+                        .pages
+                        .layout
+                        .display_error
+                        .push(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
                     update_url_hash(ctx, url, None);
                     error!("Unable to parse hash \"{:?}\", err: {:?}", &stripped_hash, err);
                 }
@@ -310,7 +313,7 @@ impl PigPageRender {
                     if ui.button("✔ Yes").clicked() {
                         match state.pages.pigs.selection.as_ref() {
                             Some(pig) => self.pig_api.delete.request(pig.id),
-                            None => state.pages.layout.display_error = Some(ApiError::new("You tried to delete a pig without having one selected, how the fuck did you manage that?".to_owned())),
+                            None => state.pages.layout.display_error.push(ApiError::new("You tried to delete a pig without having one selected, how the fuck did you manage that?".to_owned())),
                         }
                         self.delete_modal = false;
                     }

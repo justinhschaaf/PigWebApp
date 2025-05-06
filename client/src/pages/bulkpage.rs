@@ -151,8 +151,11 @@ impl RenderPage for BulkPageRender {
                     }
                 }
                 Err(err) => {
-                    state.pages.layout.display_error =
-                        Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
+                    state
+                        .pages
+                        .layout
+                        .display_error
+                        .push(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
                     update_url_hash(ctx, url, None);
                     error!("Unable to parse hash \"{:?}\", err: {:?}", &stripped_hash, err);
                 }
@@ -210,7 +213,7 @@ impl BulkPageRender {
             if let Some(sel) = state.pages.bulk.selected_import.as_mut() {
                 patch.update_import(sel);
 
-                // if import is complete, auto refresh our selection
+                // if import is complete, auto refresh our selected import
                 if sel.pending.len() == 0 {
                     self.fetch_url_selection.request(&BulkQuery::default().with_id(&sel.id));
                 }

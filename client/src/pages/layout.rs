@@ -2,9 +2,10 @@ use crate::data::api::{ApiError, AuthApi, Status};
 use crate::data::state::ClientState;
 use crate::pages::{RenderPage, Routes};
 use crate::ui::modal::Modal;
-use crate::ui::style::SPACE_SMALL;
+use crate::ui::spaced_heading;
+use crate::ui::style::{COLOR_REJECTED, SPACE_SMALL};
 use eframe::emath::Align;
-use egui::{menu, Context, OpenUrl, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
+use egui::{menu, Context, OpenUrl, RichText, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
 use pigweb_common::users::Roles;
 use pigweb_common::{yuri, AUTH_API_ROOT};
 use urlable::ParsedURL;
@@ -15,12 +16,12 @@ use urlable::ParsedURL;
 pub struct Layout {
     /// The error message currently on display, if any
     #[serde(skip)]
-    pub display_error: Option<ApiError>,
+    pub display_error: Vec<ApiError>,
 }
 
 impl Default for Layout {
     fn default() -> Self {
-        Self { display_error: None }
+        Self { display_error: Vec::new() }
     }
 }
 
@@ -54,6 +55,9 @@ impl RenderPage for LayoutRender {
             });
         });
 
+        // show error banner, if we have one
+        self.display_error(ui, state);
+
         self.show_modals(ui.ctx(), state);
     }
 }
@@ -62,8 +66,17 @@ impl LayoutRender {
     /// Checks all APIs for data received from previously submitted requests
     fn process_promises(&mut self, state: &mut ClientState) {
         match self.auth_api.is_authenticated.resolve() {
-            Status::Received(authorized) => state.authorized = authorized,
-            Status::Errored(err) => state.pages.layout.display_error = Some(err),
+            Status::Received(authorized) => {
+                // upon first loading the app without being signed in, everything will error due to
+                // being unauthorized. this clears those up for cleanliness.
+                if authorized.is_none() {
+                    state.pages.layout.display_error.clear();
+                }
+
+                // save the authorized state
+                state.authorized = authorized;
+            }
+            Status::Errored(err) => state.pages.layout.display_error.push(err),
             Status::Pending => {}
         }
     }
@@ -130,15 +143,52 @@ impl LayoutRender {
         ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
             // Show the quit button if somehow this gets run on desktop
             // (you shouldn't, dumbass)
-            if !is_web && ui.button("🗙").clicked() {
+            if !is_web && ui.button(" 🗙 ").clicked() {
                 ui.ctx().send_viewport_cmd(ViewportCommand::Close);
             }
 
             // Logout
-            if ui.button("⎆").clicked() {
+            if ui.button(" ⎆ ").clicked() {
                 ui.ctx().open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/logout/")));
             }
         });
+    }
+
+    /// Display all errors as a banner at the top of the page
+    fn display_error(&mut self, ui: &mut Ui, state: &mut ClientState) {
+        // items which should be removed, borrow check doesn't like it in the for loop
+        let mut remove = Vec::new();
+
+        for (i, err) in state.pages.layout.display_error.iter().enumerate() {
+            let heading = err.reason.as_ref().unwrap_or(&"Error".to_owned()).to_owned();
+            let heading_with_code = match err.code {
+                Some(code) => format!("{} {}", code, heading),
+                None => heading,
+            };
+
+            TopBottomPanel::top(format!("error_panel_{:?}", i)).resizable(false).show(ui.ctx(), |ui| {
+                menu::bar(ui, |ui| {
+                    state.colorix.draw_background(ui.ctx(), true);
+
+                    // add error message
+                    spaced_heading(ui, RichText::new(heading_with_code).color(COLOR_REJECTED).strong());
+                    ui.separator();
+                    ui.label(RichText::new(err.description.as_str()).color(COLOR_REJECTED));
+
+                    // right align dismiss button
+                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                        if ui.button(" 🗙 ").clicked() {
+                            remove.push(i);
+                        }
+                    });
+                });
+            });
+        }
+
+        // remove the errors which should be dismissed
+        for i in remove.iter() {
+            state.pages.layout.display_error.remove(*i);
+        }
     }
 
     /// Show any page-specific modals which should be visible
@@ -155,24 +205,6 @@ impl LayoutRender {
 
             if modal.should_close() {
                 ctx.open_url(OpenUrl::same_tab(yuri!(AUTH_API_ROOT, "/oidc/login/")));
-            }
-        }
-
-        // TODO swap error modal for banner
-        if let Some(err_unwrapped) = state.pages.layout.display_error.as_ref() {
-            let heading = err_unwrapped.reason.as_ref().unwrap_or(&"Error".to_owned()).to_string();
-            let heading_with_code = match err_unwrapped.code {
-                Some(code) => format!("{:?} {:?}", code, heading),
-                None => heading,
-            };
-
-            let modal = Modal::new("error")
-                .with_heading(heading_with_code)
-                .with_body(err_unwrapped.description.as_str())
-                .show(ctx);
-
-            if modal.should_close() {
-                state.pages.layout.display_error = None;
             }
         }
     }

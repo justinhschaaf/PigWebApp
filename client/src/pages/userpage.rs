@@ -71,8 +71,11 @@ impl RenderPage for UserPageRender {
                     }
                 }
                 Err(err) => {
-                    state.pages.layout.display_error =
-                        Some(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
+                    state
+                        .pages
+                        .layout
+                        .display_error
+                        .push(ApiError::new(err.to_string()).with_reason("Unable to parse UUID.".to_owned()));
                     update_url_hash(ctx, url, None);
                     error!("Unable to parse hash \"{:?}\", err: {:?}", &stripped_hash, err);
                 }
