@@ -1,7 +1,10 @@
 use crate::data::api::{ApiError, UserApi, UserFetchHandler};
 use crate::data::state::ClientState;
 use crate::pages::RenderPage;
-use crate::ui::style::TIME_FMT;
+use crate::ui::style::{
+    PANEL_WIDTH_LARGE, SPACE_MEDIUM, TABLE_COLUMN_WIDTH_MEDIUM, TABLE_COLUMN_WIDTH_SMALL, TABLE_ROW_HEIGHT_LARGE,
+    TABLE_ROW_HEIGHT_SMALL, TIME_FMT,
+};
 use crate::update_url_hash;
 use chrono::{Local, Utc};
 use eframe::emath::Align;
@@ -100,8 +103,8 @@ impl RenderPage for UserPageRender {
         CentralPanel::default().show(ui.ctx(), |ui| {
             state.colorix.draw_background(ui.ctx(), false);
             ui.vertical_centered(|ui| {
-                ui.set_max_width(960.0);
-                ui.add_space(8.0);
+                ui.set_max_width(PANEL_WIDTH_LARGE);
+                ui.add_space(SPACE_MEDIUM);
 
                 // Only add the table if we have users loaded
                 if self.users.as_ref().is_some_and(|users| !users.is_empty()) {
@@ -109,11 +112,11 @@ impl RenderPage for UserPageRender {
                         .striped(true)
                         .sense(Sense::click())
                         .cell_layout(Layout::left_to_right(Align::Center))
-                        .column(Column::initial(280.0))
-                        .column(Column::initial(280.0))
-                        .column(Column::initial(200.0))
-                        .column(Column::initial(200.0))
-                        .header(20.0, |mut header| {
+                        .column(Column::initial(TABLE_COLUMN_WIDTH_MEDIUM))
+                        .column(Column::initial(TABLE_COLUMN_WIDTH_MEDIUM))
+                        .column(Column::initial(TABLE_COLUMN_WIDTH_SMALL))
+                        .column(Column::initial(TABLE_COLUMN_WIDTH_SMALL))
+                        .header(TABLE_ROW_HEIGHT_LARGE, |mut header| {
                             header.col(|ui| {
                                 ui.heading("id");
                             });
@@ -175,7 +178,7 @@ impl UserPageRender {
         for user in self.users.as_ref().unwrap() {
             let selected = self.selection.as_ref().is_some_and(|sel| sel.id == user.id);
 
-            body.row(20.0, |mut row| {
+            body.row(TABLE_ROW_HEIGHT_SMALL, |mut row| {
                 row.set_selected(selected);
 
                 row.col(|ui| {

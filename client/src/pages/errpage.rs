@@ -1,5 +1,7 @@
 use crate::data::state::ClientState;
 use crate::pages::RenderPage;
+use crate::ui::spaced_heading;
+use crate::ui::style::{PANEL_WIDTH_SMALL, SPACE_LARGE, SPACE_MEDIUM};
 use egui::{Button, CentralPanel, OpenUrl, Ui};
 use egui_flex::{item, Flex, FlexJustify};
 use urlable::ParsedURL;
@@ -25,13 +27,12 @@ impl RenderPage for ErrPageRender {
         CentralPanel::default().show(ui.ctx(), |ui| {
             state.colorix.draw_background(ui.ctx(), false);
             ui.vertical_centered(|ui| {
-                ui.set_width(320.0);
-                ui.add_space(96.0);
-                ui.heading(self.head.as_str());
-                ui.add_space(8.0);
+                ui.set_width(PANEL_WIDTH_SMALL);
+                ui.add_space(SPACE_LARGE);
+                spaced_heading(ui, self.head.as_str());
 
                 ui.label(self.body.as_str());
-                ui.add_space(8.0);
+                ui.add_space(SPACE_MEDIUM);
 
                 ui.separator();
                 let mut go_home = false;

@@ -2,6 +2,7 @@ use crate::data::api::{ApiError, AuthApi, Status};
 use crate::data::state::ClientState;
 use crate::pages::{RenderPage, Routes};
 use crate::ui::modal::Modal;
+use crate::ui::style::SPACE_SMALL;
 use eframe::emath::Align;
 use egui::{menu, Context, OpenUrl, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
 use pigweb_common::users::Roles;
@@ -69,7 +70,7 @@ impl LayoutRender {
 
     /// Show the menu/nav bar at the top of the screen
     fn populate_menu(&mut self, ui: &mut Ui, state: &mut ClientState) {
-        ui.add_space(2.0);
+        ui.add_space(SPACE_SMALL);
 
         // Use the Colorix theme picker instead of egui's
         state.colorix.light_dark_toggle_button(ui, 14.0);

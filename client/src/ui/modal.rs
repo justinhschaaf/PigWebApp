@@ -1,3 +1,4 @@
+use crate::ui::style::{PANEL_WIDTH_SMALL, SPACE_MEDIUM};
 use eframe::emath::Align;
 use egui::{Context, Id, Layout, RichText, Ui, WidgetText};
 
@@ -95,14 +96,14 @@ impl Modal {
     /// Shows this modal with additional options for the user to select.
     pub fn show_with_extras(mut self, ctx: &Context, content: impl FnOnce(&mut Ui)) -> Self {
         let modal = egui::Modal::new(Id::new(self.name.to_owned())).show(ctx, |ui| {
-            ui.set_width(320.0);
+            ui.set_width(PANEL_WIDTH_SMALL);
 
             ui.vertical_centered(|ui| {
                 ui.heading(self.heading.to_owned());
 
                 // add the body if we have it
                 if let Some(body) = self.body.to_owned() {
-                    ui.add_space(8.0);
+                    ui.add_space(SPACE_MEDIUM);
                     ui.label(body);
                 }
             });

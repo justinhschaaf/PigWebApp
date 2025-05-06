@@ -1,5 +1,6 @@
+use crate::ui::style::{SPACE_MEDIUM, TABLE_COLUMN_WIDTH_SMALL, TABLE_ROW_HEIGHT_SMALL};
 use egui::text::LayoutJob;
-use egui::{Align, FontSelection, Galley, Layout, Sense, Ui, WidgetText};
+use egui::{Align, FontSelection, Galley, Layout, RichText, Sense, Ui, WidgetText};
 use egui_extras::{Column, TableBody, TableBuilder, TableRow};
 use std::sync::Arc;
 
@@ -26,7 +27,7 @@ pub fn properties_list(ui: &mut Ui) -> TableBuilder {
     TableBuilder::new(ui)
         .striped(true)
         .resizable(false)
-        .column(Column::initial(180.0))
+        .column(Column::initial(TABLE_COLUMN_WIDTH_SMALL))
         .column(Column::remainder())
         .cell_layout(Layout::left_to_right(Align::Center))
 }
@@ -87,7 +88,7 @@ pub fn selectable_list<T: Clone>(
         .body(|mut body| {
             // This means we don't have to clone the list every frame
             items.iter().for_each(|e| {
-                body.row(18.0, |mut row| {
+                body.row(TABLE_ROW_HEIGHT_SMALL, |mut row| {
                     let selected = add_row(&mut row, e);
 
                     if row.response().clicked() {
@@ -105,6 +106,14 @@ pub fn selectable_list<T: Clone>(
         });
 
     clicked
+}
+
+/// Adds a heading with a [medium space]([SPACE_MEDIUM]) before and after to
+/// the ui
+pub fn spaced_heading(ui: &mut Ui, text: impl Into<RichText>) {
+    ui.add_space(SPACE_MEDIUM);
+    ui.heading(text);
+    ui.add_space(SPACE_MEDIUM);
 }
 
 /// A custom layouter which visually wraps text while still treating it as a

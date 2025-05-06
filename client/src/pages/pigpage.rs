@@ -2,8 +2,8 @@ use crate::data::api::{ApiError, PigApi, PigFetchHandler};
 use crate::data::state::ClientState;
 use crate::pages::RenderPage;
 use crate::ui::modal::Modal;
-use crate::ui::style::TIME_FMT;
-use crate::ui::{add_properties_row, properties_list, selectable_list, wrapped_singleline_layouter};
+use crate::ui::style::{PANEL_WIDTH_MEDIUM, PANEL_WIDTH_SMALL, SPACE_SMALL, TABLE_ROW_HEIGHT_LARGE, TIME_FMT};
+use crate::ui::{add_properties_row, properties_list, selectable_list, spaced_heading, wrapped_singleline_layouter};
 use crate::update_url_hash;
 use chrono::Local;
 use egui::{Button, CentralPanel, Context, Label, ScrollArea, SidePanel, TextEdit, Ui, Widget};
@@ -184,10 +184,8 @@ impl PigPageRender {
 
     /// The sidebar listing all pigs which match the current search query
     fn populate_sidebar(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
-        ui.set_width(320.0);
-        ui.add_space(8.0);
-        ui.heading("The Pig List");
-        ui.add_space(8.0);
+        ui.set_width(PANEL_WIDTH_SMALL);
+        spaced_heading(ui, "The Pig List");
 
         ui.horizontal(|ui| {
             // Search bar, perform a search if it's been changed
@@ -207,7 +205,7 @@ impl PigPageRender {
             });
         });
 
-        ui.add_space(4.0);
+        ui.add_space(SPACE_SMALL);
 
         // Only render the results table if we have results to show
         // TODO add pagination
@@ -240,16 +238,13 @@ impl PigPageRender {
 
     /// Adds the pig details/editor to the center panel if a pig is selected
     fn populate_center(&mut self, ui: &mut Ui, state: &mut ClientState) {
-        ui.set_max_width(540.0);
+        ui.set_max_width(PANEL_WIDTH_MEDIUM);
         state.colorix.draw_background(ui.ctx(), false);
         let can_edit = state.has_role(Roles::PigEditor);
 
         // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION
         if let Some(pig) = state.pages.pigs.selection.as_mut() {
-            // Title
-            ui.add_space(8.0);
-            ui.heading(pig.name.to_owned()); // convert to owned since we transfer a mut reference later
-            ui.add_space(8.0);
+            spaced_heading(ui, pig.name.to_owned()); // convert to owned since we transfer a mut reference later
 
             // Pig action buttons
             if can_edit {
@@ -267,16 +262,16 @@ impl PigPageRender {
                     }
                 });
 
-                ui.add_space(4.0);
+                ui.add_space(SPACE_SMALL);
             }
 
             // Pig properties table
             properties_list(ui).body(|mut body| {
-                add_properties_row(&mut body, 40.0, "id", |ui| {
+                add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "id", |ui| {
                     ui.code(pig.id.to_string());
                 });
 
-                add_properties_row(&mut body, 80.0, "name", |ui| {
+                add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE * 2.0, "name", |ui| {
                     // yes, all this is necessary
                     // centered_and_justified makes the text box fill the value cell
                     // ScrollArea lets you scroll when it's too big
@@ -292,12 +287,12 @@ impl PigPageRender {
                     });
                 });
 
-                add_properties_row(&mut body, 40.0, "created by", |ui| {
+                add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "created by", |ui| {
                     // TODO actually bother fetching the user data
                     ui.code(pig.creator.to_string());
                 });
 
-                add_properties_row(&mut body, 40.0, "created at", |ui| {
+                add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "created at", |ui| {
                     let create_time = pig.created.and_utc().with_timezone(&Local);
                     ui.label(create_time.format(TIME_FMT).to_string());
                 });

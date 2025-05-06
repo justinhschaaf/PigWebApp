@@ -2,8 +2,11 @@ use crate::data::api::{ApiError, BulkApi, BulkFetchHandler, PigCreateHandler, Pi
 use crate::data::state::ClientState;
 use crate::pages::RenderPage;
 use crate::ui::modal::Modal;
-use crate::ui::style::{THEME_ACCEPTED, THEME_REJECTED, TIME_FMT};
-use crate::ui::{add_properties_row, properties_list, selectable_list, wrapped_singleline_layouter};
+use crate::ui::style::{
+    COLOR_ACCEPTED, COLOR_REJECTED, PANEL_WIDTH_MEDIUM, PANEL_WIDTH_SMALL, SPACE_MEDIUM, TABLE_ROW_HEIGHT_LARGE,
+    TABLE_ROW_HEIGHT_SMALL, TIME_FMT,
+};
+use crate::ui::{add_properties_row, properties_list, selectable_list, spaced_heading, wrapped_singleline_layouter};
 use crate::update_url_hash;
 use chrono::Local;
 use egui::{
@@ -287,10 +290,8 @@ impl BulkPageRender {
 
     /// The sidebar listing all [`BulkImport`]s the user has access to
     fn populate_sidebar(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
-        ui.set_width(320.0);
-        ui.add_space(8.0);
-        ui.heading("Bulk Imports");
-        ui.add_space(8.0);
+        ui.set_width(PANEL_WIDTH_SMALL);
+        spaced_heading(ui, "Bulk Imports");
 
         // Only render the results table if we have results to show
         if self.all_imports.as_ref().is_some_and(|imports| !imports.is_empty()) {
@@ -346,13 +347,9 @@ impl BulkPageRender {
 
     /// Shows the create screen in the center of the page
     fn populate_center_create(&mut self, ui: &mut Ui, state: &mut ClientState) {
-        ui.set_max_width(540.0);
+        ui.set_max_width(PANEL_WIDTH_MEDIUM);
         state.colorix.draw_background(ui.ctx(), false);
-
-        // Title
-        ui.add_space(8.0);
-        ui.heading("Paste Names Below");
-        ui.add_space(8.0);
+        spaced_heading(ui, "Paste Names Below");
 
         // submit button
         let add_button = Button::new("+ Add All Pigs");
@@ -374,11 +371,9 @@ impl BulkPageRender {
         // right sidepanel showing duplicates of the selected pending pig
         // this is added before the central panel because that must always come last
         SidePanel::right("duplicate_pigs").resizable(false).show(ui.ctx(), |ui| {
-            ui.set_width(320.0);
+            ui.set_width(PANEL_WIDTH_SMALL);
 
-            ui.add_space(8.0);
-            ui.heading("Duplicates");
-            ui.add_space(8.0);
+            spaced_heading(ui, "Duplicates");
 
             // if we have anything in the name edit box and we have results to show
             if !state.pages.bulk.updated_name.is_empty()
@@ -409,22 +404,16 @@ impl BulkPageRender {
         // center panel with properties of the whole import and editor for the pending name
         CentralPanel::default().show(ui.ctx(), |ui| {
             ui.vertical_centered(|ui| {
-                ui.set_max_width(540.0);
+                ui.set_max_width(PANEL_WIDTH_MEDIUM);
                 state.colorix.draw_background(ui.ctx(), false);
                 let is_admin = state.has_role(Roles::BulkAdmin);
 
-                // Title
-                ui.add_space(8.0);
-                ui.heading("In Progress");
-                ui.add_space(8.0);
-
                 // show properties
+                spaced_heading(ui, "In Progress");
                 self.import_properties_list(ui, state, is_admin);
 
                 // title for edit section
-                ui.add_space(8.0);
-                ui.heading("Add Names");
-                ui.add_space(8.0);
+                spaced_heading(ui, "Add Names");
 
                 // whether the currently selected pig to take action on is pending
                 let selected_is_pending = state
@@ -467,20 +456,20 @@ impl BulkPageRender {
                     }
                 });
 
-                ui.add_space(8.0);
+                ui.add_space(SPACE_MEDIUM);
 
                 // edit text box
                 let mut layouter = wrapped_singleline_layouter();
                 let te = TextEdit::singleline(&mut state.pages.bulk.updated_name)
                     .desired_rows(4)
                     .layouter(&mut layouter)
-                    .desired_width(540.0);
+                    .desired_width(PANEL_WIDTH_MEDIUM);
                 if ui.add_enabled(selected_is_pending, te).changed() {
                     state.pages.bulk.dirty = true;
                     self.query_duplicates(state);
                 }
 
-                ui.add_space(8.0);
+                ui.add_space(SPACE_MEDIUM);
 
                 // forces the second table to take on a new id. there's an id conflict without this
                 // due to the two tables in the one vertical_centered ui
@@ -495,7 +484,7 @@ impl BulkPageRender {
     fn populate_center_finished(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         // center always comes last
         SidePanel::right("added_pigs").resizable(false).show(ui.ctx(), |ui| {
-            ui.set_width(320.0);
+            ui.set_width(PANEL_WIDTH_SMALL);
 
             // show all names which were a part of this import
             self.selectable_mixed_list(ui, state, url);
@@ -503,14 +492,12 @@ impl BulkPageRender {
 
         CentralPanel::default().show(ui.ctx(), |ui| {
             ui.vertical_centered(|ui| {
-                ui.set_max_width(540.0);
+                ui.set_max_width(PANEL_WIDTH_MEDIUM);
                 state.colorix.draw_background(ui.ctx(), false);
                 let is_admin = state.has_role(Roles::BulkAdmin);
 
                 // Title
-                ui.add_space(8.0);
-                ui.heading("Import Complete");
-                ui.add_space(8.0);
+                spaced_heading(ui, "Import Complete");
 
                 // navigates to the currently selected pig in the right sidebar, assuming it was added
                 let go_to_selection = Button::new("⮩ Go To Pig");
@@ -536,26 +523,26 @@ impl BulkPageRender {
     pub fn import_properties_list(&mut self, ui: &mut Ui, state: &mut ClientState, is_admin: bool) {
         if let Some(import) = state.pages.bulk.selected_import.as_mut() {
             properties_list(ui).body(|mut body| {
-                add_properties_row(&mut body, 40.0, "id", |ui| {
+                add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "id", |ui| {
                     ui.code(import.id.to_string());
                 });
 
                 // creator is only relevant if the user can see imports which aren't theirs
                 if is_admin {
-                    add_properties_row(&mut body, 40.0, "created by", |ui| {
+                    add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "created by", |ui| {
                         // TODO actually bother fetching the user data
                         ui.code(import.creator.to_string());
                     });
                 }
 
-                add_properties_row(&mut body, 40.0, "started at", |ui| {
+                add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "started at", |ui| {
                     let start_time = import.started.and_utc().with_timezone(&Local);
                     ui.label(start_time.format(TIME_FMT).to_string());
                 });
 
                 // only show finished time if we have it
                 if let Some(finished) = import.finished {
-                    add_properties_row(&mut body, 40.0, "finished at", |ui| {
+                    add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "finished at", |ui| {
                         let finish_time = finished.and_utc().with_timezone(&Local);
                         ui.label(finish_time.format(TIME_FMT).to_string());
                     });
@@ -564,16 +551,16 @@ impl BulkPageRender {
                 // only show pending amount if we have it
                 let pending = import.pending.len();
                 if pending > 0 {
-                    add_properties_row(&mut body, 40.0, "pending", |ui| {
+                    add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "pending", |ui| {
                         ui.label(pending.to_string());
                     });
                 }
 
-                add_properties_row(&mut body, 40.0, "accepted", |ui| {
+                add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "accepted", |ui| {
                     ui.label(import.accepted.len().to_string());
                 });
 
-                add_properties_row(&mut body, 40.0, "rejected", |ui| {
+                add_properties_row(&mut body, TABLE_ROW_HEIGHT_LARGE, "rejected", |ui| {
                     ui.label(import.rejected.len().to_string());
                 });
             });
@@ -597,7 +584,7 @@ impl BulkPageRender {
                 .body(|mut body| {
                     // add the pending names
                     import.pending.iter().for_each(|e| {
-                        body.row(18.0, |mut row| {
+                        body.row(TABLE_ROW_HEIGHT_SMALL, |mut row| {
                             let selected = state.pages.bulk.selected_pig.as_ref().is_some_and(|sel| match sel {
                                 SelectedImportedPig::Pending(name) => name == e,
                                 _ => false,
@@ -623,7 +610,7 @@ impl BulkPageRender {
                     // add the accepted pigs with green name color
                     if let Some(accepted) = self.accepted_pigs.as_ref() {
                         accepted.iter().for_each(|e| {
-                            body.row(18.0, |mut row| {
+                            body.row(TABLE_ROW_HEIGHT_SMALL, |mut row| {
                                 let selected = state.pages.bulk.selected_pig.as_ref().is_some_and(|sel| match sel {
                                     SelectedImportedPig::Accepted(pig) => pig.id == e.id,
                                     _ => false,
@@ -633,7 +620,7 @@ impl BulkPageRender {
 
                                 // Make sure we can't select the text or else we can't click the row behind
                                 row.col(|ui| {
-                                    Label::new(RichText::new(&e.name).color(THEME_ACCEPTED))
+                                    Label::new(RichText::new(&e.name).color(COLOR_ACCEPTED))
                                         .selectable(false)
                                         .truncate()
                                         .ui(ui);
@@ -652,7 +639,7 @@ impl BulkPageRender {
 
                     // add the rejected names with red text color
                     import.rejected.iter().for_each(|e| {
-                        body.row(18.0, |mut row| {
+                        body.row(TABLE_ROW_HEIGHT_SMALL, |mut row| {
                             let selected = state.pages.bulk.selected_pig.as_ref().is_some_and(|sel| match sel {
                                 SelectedImportedPig::Rejected(name) => name == e,
                                 _ => false,
@@ -662,7 +649,7 @@ impl BulkPageRender {
 
                             // Make sure we can't select the text or else we can't click the row behind
                             row.col(|ui| {
-                                Label::new(RichText::new(e).color(THEME_REJECTED)).selectable(false).truncate().ui(ui);
+                                Label::new(RichText::new(e).color(COLOR_REJECTED)).selectable(false).truncate().ui(ui);
                             });
 
                             if row.response().clicked() {
