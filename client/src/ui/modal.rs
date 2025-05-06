@@ -21,6 +21,40 @@ pub struct Modal {
 }
 
 impl Modal {
+    /// Creates a modal warning the user about their unsaved changes. Returns
+    /// [`Some`] if the modal should close, which contains `true` only if the
+    /// action should proceed. Otherwise, you should just close the modal.
+    pub fn dirty(ctx: &Context) -> Option<bool> {
+        let mut res = None;
+
+        let modal = Modal::new("dirty")
+            .with_heading("Discard Unsaved Changes")
+            .with_body(
+                "Are you sure you want to continue and discard your current changes? There's no going back after this!",
+            )
+            .show_with_extras(ctx, |ui| {
+                if ui.button("✔ Yes").clicked() {
+                    res = Some(true);
+                }
+            });
+
+        if modal.should_close() {
+            res = Some(false);
+        }
+
+        res
+    }
+
+    /// Creates a modal informing the user the item they requested could not be
+    /// found. Returns `true` when the modal should close.
+    pub fn not_found(ctx: &Context) -> bool {
+        Modal::new("not_found")
+            .with_heading("Not Found")
+            .with_body("We couldn't find anything with that id.")
+            .show(ctx)
+            .should_close()
+    }
+
     /// Creates a new modal with the given name. This sets both the internal
     /// name and the default heading.
     pub fn new(name: &str) -> Self {

@@ -686,28 +686,17 @@ impl BulkPageRender {
     /// Show any page-specific modals which should be visible
     fn show_modals(&mut self, ctx: &Context, state: &mut ClientState, url: &ParsedURL) {
         if !matches!(self.dirty_modal, BulkPageDirtyAction::None) {
-            // TODO util function returns Option<bool> with bool being whether to perform the action
-            let modal = Modal::new("dirty")
-                .with_heading("Discard Unsaved Changes")
-                .with_body("Are you sure you want to continue and discard your current changes? There's no going back after this!")
-                .show_with_extras(ctx, |ui| {
-                    if ui.button("✔ Yes").clicked() {
-                        self.do_dirty_action(ui.ctx(), state, url);
-                    }
-                });
-
-            if modal.should_close() {
-                self.dirty_modal = BulkPageDirtyAction::None;
+            if let Some(do_action) = Modal::dirty(ctx) {
+                if do_action {
+                    self.do_dirty_action(ctx, state, url);
+                } else {
+                    self.dirty_modal = BulkPageDirtyAction::None;
+                }
             }
         }
 
         if self.not_found_modal {
-            let modal = Modal::new("import_not_found")
-                .with_heading("Import Not Found")
-                .with_body("We couldn't find an import with that id.")
-                .show(ctx);
-
-            if modal.should_close() {
+            if Modal::not_found(ctx) {
                 // Close the modal
                 self.not_found_modal = false;
 
