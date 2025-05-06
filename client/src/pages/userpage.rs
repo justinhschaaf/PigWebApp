@@ -153,9 +153,17 @@ impl UserPageRender {
             }
         }
 
-        // TODO we could just swap out the individual user in the list
-        if let Some(_) = self.user_api.expire.received(state) {
-            self.fetch_users();
+        if let Some(user) = self.user_api.expire.received(state) {
+            // update the user in the list of all users rather than refreshing everything
+            if let Some(users) = self.users.as_mut() {
+                let pos = users.iter().position(|e| e.id.eq(&user.id));
+                pos.and_then(|i| Some(users[i] = user.clone()));
+            }
+
+            // if we have this user selected, update the data
+            if self.selection.as_ref().is_some_and(|sel| sel.id.eq(&user.id)) {
+                self.selection = Some(user);
+            }
         }
 
         if let Some(mut users) = self.fetch_url_selection.received(state).and_then(|res| res.users) {
