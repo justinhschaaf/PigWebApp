@@ -2,25 +2,33 @@
 
 *This is getting out of hand.*
 
-The Pig Web App is meant to be a web GUI to manage the list of pig names. Keeping them in a yml file on a server that is
-almost never up is no longer feasible, and even if it were, the plugin is not built to manage such a large list
-efficiently.
+The Pig Web App is a web GUI to manage a list of pig names. Keeping them in a yml file on a server that is never online
+is no longer feasible, and even if it were, the plugin is not built to manage such a large list efficiently.
 
 I'm mainly going this far to write the entire app from the ground up to make sure search queries are handled
 server-side, as Pocketbase doesn't support serverside functions.
 
-## Goals
+This is also my entryway into Rust, and as such have documented much of what everything does and what I've learned
+throughout the process. If there's some horrible mistake I've made, any tips I could use, or any questions you have,
+please feel free to [let me know](https://justinschaaf.com/redirect/mailto).
 
-### Milestone 1
+![](docs/images/list_search.png)
+![](docs/images/bulk_wizard.png)
 
-- [x] **Client and Server modules written in Rust.** Shared code and data structures should be in a Common module.
-- [x] **[CRUD](https://en.wikipedia.org/wiki/Create%2C_read%2C_update_and_delete) pig names.**
-- [x] **[RBAC](https://en.wikipedia.org/wiki/Role-based_access_control) to allow different levels of access.** You
+For more screenshots, see the [folder](/docs/images).
+
+## Roadmap
+
+### Milestone 1 - *Complete 2025-04-11*
+
+- [x] **Client and Server modules written in Rust.** - *Complete 2024-12-29* - Shared code and data structures should be in a Common module.
+- [x] **[CRUD](https://en.wikipedia.org/wiki/Create%2C_read%2C_update_and_delete) pig names.** - *Complete 2025-02-15*
+- [x] **[RBAC](https://en.wikipedia.org/wiki/Role-based_access_control) to allow different levels of access.** - *Complete 2025-04-11* - You
   should also be able to configure groups for assigning these roles to users.
 - [x] **[OIDC](https://en.wikipedia.org/wiki/OpenID#OpenID_Connect_(OIDC)) authentication, the app should not manage
-  authentication.** It should, however, be able to read user groups from OIDC user info and manage users' groups through
+  authentication.** - *Complete 2025-03-30* - It should, however, be able to read user groups from OIDC user info and manage users' groups through
   it.
-- [x] **Fully declarative configuration.** Ideally, this is possible through NixOS modules that you can also use to
+- [x] **Fully declarative configuration.** - *Complete 2025-01-31* - Ideally, this is possible through NixOS modules that you can also use to
   deploy it. The config file itself can be TOML as I don't care about reading it, just processing. It should also be
   able to take config from environment variables (takes precedent over config) and possibly CLI options (takes precedent
   over env).
@@ -31,35 +39,13 @@ server-side, as Pocketbase doesn't support serverside functions.
   change was.
 - [ ] **[MiniMessage](https://docs.advntr.dev/minimessage/index.html) formatting previews.** This will likely require a
   custom interpreter, unfortunately.
-- [x] **Mass Add wizard to import en masse.** This should hold your hand through the entire import process, cleaning up
+- [x] **Mass Add wizard to import en masse.** - *Complete 2025-05-03* - This should hold your hand through the entire import process, cleaning up
   formatting, automatic duplicates, manual duplication checks, etc. There should be a way to save your progress.
 - [ ] **OAuth2 authentication for API endpoints.** This should be used to integrate with the plugin itself.
 
-### Client Architecture
-
-- **[eframe/egui](https://github.com/emilk/eframe_template/tree/main) for GUI.** Obeying the DOM and supporting web
-  browser accessibility features are not a priority with the limited userbase this app is designed for, learning how to
-  code in Rust and egui is more important.
-- **[ehttp](https://github.com/emilk/ehttp?tab=readme-ov-file) for HTTP requests to the server.** Keep an eye
-  on [emilk/ehttp#18](https://github.com/emilk/ehttp/issues/18)
-  and [emilk/ehttp#62](https://github.com/emilk/ehttp/pull/62) for proper authentication cookie support.
-
-### Server Architecture
-
-- **[Rocket](https://rocket.rs/) for handling HTTP requests.**
-- **[Diesel](https://diesel.rs/) for database, [just use Postgres](https://mccue.dev/pages/8-16-24-just-use-postgres) for the backend.** Postgres supports full text search, so we don't need any additional dependencies for it. See [1](https://admcpr.com/postgres-full-text-search-is-better-than-part1/) [2](https://www.crunchydata.com/blog/postgres-full-text-search-a-search-engine-in-a-database) [3](https://neon.tech/postgresql/postgresql-indexes/postgresql-full-text-search) for implementation guidance.
-- **[rocket_oauth2](https://github.com/jebrosen/rocket_oauth2) for SSO.** Used as the base upon which OIDC is implemented.
-- **[Figment](https://docs.rs/figment/0.10.19/figment/) for handling configuration.** This is also what Rocket uses, see [here](https://rocket.rs/guide/v0.5/configuration/) for its configuration.
-
-### Implementation Notes
-
-- We likely just need the root path (and 404) on the Rocket web server to serve the compiled WASM files, and all API
-  routes should be behind /api
-    - If the user has already been authenticated and the cookies are present on the browser, the requests should just
-      work, no fancy stuff required
-    - eframe appears to manage its pages via headings instead of routing, so that shouldn't be an issue
-
 ## Workspace
+
+Additional guides are available in the [/docs](./docs) folder.
 
 ### Setup
 
