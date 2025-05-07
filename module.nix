@@ -17,6 +17,7 @@ in {
             description = "Whether to create a local database automatically.";
         };
         config = lib.mkOption {
+            default = {};
             description = ''
                 The configuration for the PigWeb server. Also includes options
                 for the underlying Rocket web server, which you can view at

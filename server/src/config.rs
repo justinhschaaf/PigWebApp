@@ -89,7 +89,7 @@ impl Default for DatabaseConfig {
             host: Some("localhost".to_owned()),
             port: Some(5432),
             dbname: Some("pigweb".to_owned()),
-            user: None,
+            user: Some("pigweb".to_owned()),
             password: None,
         }
     }
