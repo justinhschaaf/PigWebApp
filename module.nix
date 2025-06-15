@@ -34,6 +34,7 @@ in {
                         description = "Port to serve on.";
                     };
                     database = lib.mkOption {
+                        default = {};
                         description = ''
                             The configuration for the PostgreSQL database PigWeb
                             uses. You can set each option individually or just
