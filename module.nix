@@ -1,4 +1,4 @@
-{ self, lib, pkgs, config, ... }: let
+{ inputs, lib, pkgs, config, ... }: let
     # https://github.com/NixOS/nixpkgs/blob/f3bcd5a33555796da50d1e5675c0dfebcf94c6cf/nixos/modules/services/networking/corerad.nix
     cfg = config.services.pigweb;
     format = pkgs.formats.toml {};
@@ -137,13 +137,13 @@ in {
         systemd.services."pigweb" = let
             pigwebConfigFile = format.generate "PigWeb.toml" cfg.config;
         in {
-            script = "${lib.getExe self.outputs.packages.${pkgs.system}.pigweb_server}";
+            script = "${lib.getExe inputs.self.outputs.packages.${pkgs.system}.pigweb_server}";
             wantedBy = [ "multi-user.target" ];
             wants = [ "network-online.target" ];
             after = [ "network-online.target" ] ++ (lib.optionals cfg.createDatabase [ "postgresql.service" ]);
             environment = {
                 PIGWEB_CONFIG = "${pigwebConfigFile}";
-                PIGWEB_CLIENT_PATH = "${self.outputs.packages.${pkgs.system}.pigweb_client}";
+                PIGWEB_CLIENT_PATH = "${inputs.self.outputs.packages.${pkgs.system}.pigweb_client}";
             };
             serviceConfig = {
                 EnvironmentFile = lib.mkIf (cfg.environmentFile != null) [ cfg.environmentFile ];
