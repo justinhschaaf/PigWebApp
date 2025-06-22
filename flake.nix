@@ -43,7 +43,9 @@
                 #
                 # Using the nixpkgs clean function instead of Crane's fixes
                 # "ERROR error getting the canonical path to the build target HTML file"
-                src = pkgs.lib.cleanSource ./.;
+                #
+                # According to Nix, "self" evaluates faster than "./."
+                src = pkgs.lib.cleanSource self;
 
                 # This is set for some reason idfk what it does
                 strictDeps = true;
