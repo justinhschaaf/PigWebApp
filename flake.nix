@@ -78,6 +78,12 @@
             serverPkgArgs = basePkgArgs // {
                 pname = (pkgs.lib.importTOML ./server/Cargo.toml).package.name;
                 cargoExtraArgs = "--package=pigweb_server";
+
+                # postgresql lib needed for server. kudos to duck.ai for
+                # interpreting the abysmal error message complaining about it
+                buildInputs = with pkgs; [
+                    libpq
+                ];
             };
 
             # Build the dependencies to cache them ahead of time
