@@ -264,7 +264,7 @@
                                             #};
                                             host = lib.mkOption {
                                                 type = lib.types.singleLineStr;
-                                                default = "localhost";
+                                                default = "/var/run/postgresql"; # unix socket location
                                                 description = "Name of the host to connect to.";
                                             };
                                             port = lib.mkOption {
