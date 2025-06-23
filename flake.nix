@@ -282,11 +282,11 @@
                                                 default = "pigweb";
                                                 description = "The Postgres user to sign in as.";
                                             };
-                                            #password = lib.mkOption {
-                                            #    type = lib.types.singleLineStr;
-                                            #    default = null;
-                                            #    description = "The password for the user, if required.";
-                                            #};
+                                            password = lib.mkOption {
+                                                type = lib.types.singleLineStr;
+                                                default = "";
+                                                description = "The password for the user, if required.";
+                                            };
                                         };
                                     };
                                 };
