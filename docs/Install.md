@@ -16,7 +16,7 @@
     ```nix
     {
         inputs.pigweb.url = "github:justinhschaaf/PigWebApp/main";
-        
+
         outputs = { nixpkgs, ... }@inputs:
         let
             system = "x86_64-linux";
@@ -38,7 +38,7 @@
 
     ```nix
     { inputs, pkgs, ... }: {
-    
+
         services.pigweb = {
             enable = true;
             openFirewall = true;
@@ -48,7 +48,7 @@
                     user = [ "PigViewer" "PigEditor" "BulkEditor" ];
                     admin = [ "BulkAdmin" "UserViewer" "UserAdmin" "LogViewer"];
                 };
-                
+
                 oidc = {
                     auth_uri = "https://authentik.local/application/o/authorize/";
                     token_uri = "https://authentik.local/application/o/token/";
@@ -58,9 +58,9 @@
                 };
             };
         };
-        
+
         ...
-        
+
     }
     ```
 
@@ -75,4 +75,5 @@
     - A [PostgreSQL](https://www.postgresql.org/) database
     - A reverse proxy with HTTPS, e.g. [Caddy](https://caddyserver.com/)
     - An SSO provider which supports OIDC, e.g. [Authentik](https://goauthentik.io/)
+    - Set a secure [secret_key](https://rocket.rs/guide/v0.5/configuration/#secret-key) using `openssl rand -base64 32`
 5. Navigate to your install folder in a terminal, then run `./pigweb_server`. The app should now be available at <http://localhost:8000> or the hostname you configured with your reverse proxy.

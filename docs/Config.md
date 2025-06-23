@@ -53,6 +53,9 @@ Environment variables take precedent over the TOML file, allowing you to avoid p
 
 The server supports the options below and requires most of them to be set to function.
 
+> [!IMPORTANT]
+> Make sure you set a [`secret_key`](https://rocket.rs/guide/v0.5/configuration/#secret-key) for use encrypting values. The server will not start if this isn't set.
+
 - **All [Rocket config options](https://rocket.rs/guide/v0.5/configuration/) are set in the same way.** Ignore the section on Profiles.
 
 | key           | type                      | description                                                                                                                                                                        | default            |
