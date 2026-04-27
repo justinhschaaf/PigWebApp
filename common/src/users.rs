@@ -126,7 +126,7 @@ impl UserQuery {
     #[dsl::auto_type(no_type_alias)]
     pub fn to_db_select(&self) -> _ {
         // Lets us actively build the query instead of being forced to use it immediately
-        let mut res: helper_types::IntoBoxed<schema::users::table, pg::Pg> = schema::users::table.into_boxed();
+        let mut res: helper_types::IntoBoxed<'_, schema::users::table, pg::Pg> = schema::users::table.into_boxed();
 
         // Filter by name, if specified
         if let Some(ref username) = self.username {

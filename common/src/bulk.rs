@@ -211,7 +211,7 @@ impl BulkQuery {
     #[dsl::auto_type(no_type_alias)]
     pub fn to_db_select(&self) -> _ {
         // Lets us actively build the query instead of being forced to use it immediately
-        let mut res: helper_types::IntoBoxed<schema::bulk_imports::table, pg::Pg> =
+        let mut res: helper_types::IntoBoxed<'_, schema::bulk_imports::table, pg::Pg> =
             schema::bulk_imports::table.into_boxed();
 
         // Filter by id, if specified
