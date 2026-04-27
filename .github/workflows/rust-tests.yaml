@@ -36,7 +36,7 @@ jobs:
       - name: Use Nix shell
         uses: rrbutani/use-nix-shell-action@v1
         with:
-          devShell: .#actions
+          devShell: .#default
           extraNixOptions: --impure
         # Rust stuff
       - name: Cache Cargo
