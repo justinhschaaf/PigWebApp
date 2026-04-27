@@ -10,7 +10,7 @@ use crate::ui::{add_properties_row, properties_list, selectable_list, spaced_hea
 use crate::update_url_hash;
 use chrono::Local;
 use egui::{
-    Align, Button, CentralPanel, Context, Label, Layout, OpenUrl, RichText, ScrollArea, Sense, SidePanel, TextEdit, Ui,
+    Align, Button, CentralPanel, Context, Label, Layout, OpenUrl, Panel, RichText, ScrollArea, Sense, TextEdit, Ui,
     Widget,
 };
 use egui_extras::{Column, TableBuilder};
@@ -180,7 +180,7 @@ impl RenderPage for BulkPageRender {
 
         self.process_promises(ui.ctx(), state, url);
 
-        SidePanel::left("left_panel").resizable(false).show(ui.ctx(), |ui| {
+        Panel::left("left_panel").resizable(false).show_inside(ui, |ui| {
             self.populate_sidebar(ui, state, url);
         });
 
@@ -340,7 +340,7 @@ impl BulkPageRender {
             }
         } else {
             // show the create screen
-            CentralPanel::default().show(ui.ctx(), |ui| {
+            CentralPanel::default().show_inside(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     self.populate_center_create(ui, state);
                 });
@@ -373,7 +373,7 @@ impl BulkPageRender {
     fn populate_center_edit(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         // right sidepanel showing duplicates of the selected pending pig
         // this is added before the central panel because that must always come last
-        SidePanel::right("duplicate_pigs").resizable(false).show(ui.ctx(), |ui| {
+        Panel::right("duplicate_pigs").resizable(false).show_inside(ui, |ui| {
             ui.set_width(PANEL_WIDTH_SMALL);
 
             spaced_heading(ui, "Duplicates");
@@ -405,7 +405,7 @@ impl BulkPageRender {
         });
 
         // center panel with properties of the whole import and editor for the pending name
-        CentralPanel::default().show(ui.ctx(), |ui| {
+        CentralPanel::default().show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.set_max_width(PANEL_WIDTH_MEDIUM);
                 state.colorix.draw_background(ui.ctx(), false);
@@ -486,17 +486,16 @@ impl BulkPageRender {
     /// Shows the import when there are no remaining names to add
     fn populate_center_finished(&mut self, ui: &mut Ui, state: &mut ClientState, url: &ParsedURL) {
         // center always comes last
-        SidePanel::right("added_pigs").resizable(false).show(ui.ctx(), |ui| {
+        Panel::right("added_pigs").resizable(false).show_inside(ui, |ui| {
             ui.set_width(PANEL_WIDTH_SMALL);
 
             // show all names which were a part of this import
             self.selectable_mixed_list(ui, state, url);
         });
 
-        CentralPanel::default().show(ui.ctx(), |ui| {
+        CentralPanel::default().frame(egui::Frame::NONE).show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.set_max_width(PANEL_WIDTH_MEDIUM);
-                state.colorix.draw_background(ui.ctx(), false);
                 let is_admin = state.has_role(Roles::BulkAdmin);
 
                 // Title

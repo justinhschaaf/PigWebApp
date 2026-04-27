@@ -24,8 +24,7 @@ impl Default for ErrPageRender {
 
 impl RenderPage for ErrPageRender {
     fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _url: &ParsedURL) {
-        CentralPanel::default().show(ui.ctx(), |ui| {
-            state.colorix.draw_background(ui.ctx(), false);
+        CentralPanel::default().frame(egui::Frame::NONE).show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.set_width(PANEL_WIDTH_SMALL);
                 ui.add_space(SPACE_LARGE);

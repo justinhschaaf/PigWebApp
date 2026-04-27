@@ -103,8 +103,7 @@ impl RenderPage for UserPageRender {
 
         // Draw the CentralPanel and the user table here because that's all this page is
         // Use the helper function to populate the table body
-        CentralPanel::default().show(ui.ctx(), |ui| {
-            state.colorix.draw_background(ui.ctx(), false);
+        CentralPanel::default().frame(egui::Frame::NONE).show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.set_max_width(PANEL_WIDTH_LARGE);
                 ui.add_space(SPACE_MEDIUM);

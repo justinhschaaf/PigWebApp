@@ -6,7 +6,7 @@ use crate::ui::style::{PANEL_WIDTH_MEDIUM, PANEL_WIDTH_SMALL, SPACE_SMALL, TABLE
 use crate::ui::{add_properties_row, properties_list, selectable_list, spaced_heading, wrapped_singleline_layouter};
 use crate::update_url_hash;
 use chrono::Local;
-use egui::{Button, CentralPanel, Context, Label, ScrollArea, SidePanel, TextEdit, Ui, Widget};
+use egui::{Button, CentralPanel, Context, Label, Panel, ScrollArea, TextEdit, Ui, Widget};
 use egui_flex::{item, Flex, FlexJustify};
 use log::{debug, error};
 use pigweb_common::pigs::{Pig, PigQuery};
@@ -134,11 +134,12 @@ impl RenderPage for PigPageRender {
 
         self.process_promises(ui.ctx(), state, url);
 
-        SidePanel::left("left_panel").resizable(false).show(ui.ctx(), |ui| {
+        Panel::left("left_panel").resizable(false).show_inside(ui, |ui| {
             self.populate_sidebar(ui, state, url);
         });
 
-        CentralPanel::default().show(ui.ctx(), |ui| {
+        // draw central panel, Frame::NONE makes the background transparent, inheriting the base from layout
+        CentralPanel::default().frame(egui::Frame::NONE).show_inside(ui, |ui| {
             ui.vertical_centered(|ui| {
                 self.populate_center(ui, state);
             });
@@ -242,7 +243,6 @@ impl PigPageRender {
     /// Adds the pig details/editor to the center panel if a pig is selected
     fn populate_center(&mut self, ui: &mut Ui, state: &mut ClientState) {
         ui.set_max_width(PANEL_WIDTH_MEDIUM);
-        state.colorix.draw_background(ui.ctx(), false);
         let can_edit = state.has_role(Roles::PigEditor);
 
         // THIS IS REALLY FUCKING IMPORTANT, LETS US MODIFY THE VALUE INSIDE THE OPTION

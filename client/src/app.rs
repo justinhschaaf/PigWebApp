@@ -4,7 +4,7 @@ use crate::pages::pigpage::PigPageRender;
 use crate::pages::{RenderPage, Routes};
 use crate::ui::style;
 use eframe::WebInfo;
-use egui::Context;
+use egui::Ui;
 use urlable::{parse_url, ParsedURL};
 
 /// The client for the Pig Web App, pretty much everything runs through this
@@ -36,8 +36,8 @@ impl Default for PigWebClient {
 
 impl eframe::App for PigWebClient {
     // Called each time the UI needs repainting, which may be many times per second.
-    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             // get the current url
             let url = Self::url_from_webinfo(&frame.info().web_info);
 
@@ -59,12 +59,12 @@ impl eframe::App for PigWebClient {
                 self.page_render = self.state.route.get_renderer();
 
                 // Tell the page renderer it's being opened
-                self.page_render.open(ctx, &mut self.state, &url);
-                self.page_render.on_url_update(ctx, &mut self.state, &url);
+                self.page_render.open(ui.ctx(), &mut self.state, &url);
+                self.page_render.on_url_update(ui.ctx(), &mut self.state, &url);
             } else if url.hash != self.last_hash {
                 // Tell the page if we're on the same route but the hash has updated
                 self.last_hash = url.hash.to_owned();
-                self.page_render.on_url_update(ctx, &mut self.state, &url);
+                self.page_render.on_url_update(ui.ctx(), &mut self.state, &url);
             }
 
             // Render the page

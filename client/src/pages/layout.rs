@@ -5,7 +5,7 @@ use crate::ui::modal::Modal;
 use crate::ui::spaced_heading;
 use crate::ui::style::{COLOR_REJECTED, SPACE_SMALL};
 use eframe::emath::Align;
-use egui::{menu, Context, OpenUrl, RichText, SelectableLabel, TopBottomPanel, Ui, ViewportCommand};
+use egui::{Button, Context, MenuBar, OpenUrl, Panel, RichText, Ui, ViewportCommand};
 use pigweb_common::users::Roles;
 use pigweb_common::{yuri, AUTH_API_ROOT};
 use urlable::ParsedURL;
@@ -48,9 +48,10 @@ impl RenderPage for LayoutRender {
     fn ui(&mut self, ui: &mut Ui, state: &mut ClientState, _url: &ParsedURL) {
         // Handle all the incoming data
         self.process_promises(state);
+        state.colorix.draw_background(ui.ctx(), false);
 
-        TopBottomPanel::top("top_panel").resizable(false).show(ui.ctx(), |ui| {
-            menu::bar(ui, |ui| {
+        Panel::top("top_panel").resizable(false).show_inside(ui, |ui| {
+            MenuBar::new().ui(ui, |ui| {
                 self.populate_menu(ui, state);
             });
         });
@@ -99,7 +100,7 @@ impl LayoutRender {
         // link to each page the user can see
         if state.has_role(Roles::PigViewer) {
             let current = state.route == Routes::Pigs;
-            if ui.add(SelectableLabel::new(current, " 🐖 Pigs ")).clicked() {
+            if ui.add(Button::selectable(current, " 🐖 Pigs ")).clicked() {
                 if !current {
                     ui.ctx().open_url(OpenUrl::same_tab("/pigs"))
                 }
@@ -108,7 +109,7 @@ impl LayoutRender {
         }
         if state.has_role(Roles::BulkEditor) || state.has_role(Roles::BulkAdmin) {
             let current = state.route == Routes::Bulk;
-            if ui.add(SelectableLabel::new(current, " 📥 Import ")).clicked() {
+            if ui.add(Button::selectable(current, " 📥 Import ")).clicked() {
                 if !current {
                     ui.ctx().open_url(OpenUrl::same_tab("/bulk"))
                 }
@@ -116,19 +117,19 @@ impl LayoutRender {
             show_second_separator = true;
         }
         if state.has_role(Roles::LogViewer) {
-            ui.add_enabled(false, SelectableLabel::new(false, " 📄 Logs "));
+            ui.add_enabled(false, Button::selectable(false, " 📄 Logs "));
             show_second_separator = true;
         }
         if state.has_role(Roles::UserViewer) {
             let current = state.route == Routes::Users;
-            if ui.add(SelectableLabel::new(current, " 😐 Users ")).clicked() {
+            if ui.add(Button::selectable(current, " 😐 Users ")).clicked() {
                 if !current {
                     ui.ctx().open_url(OpenUrl::same_tab("/users"))
                 }
             }
             show_second_separator = true;
         }
-        //ui.add_enabled(false, SelectableLabel::new(false, " ⛭ System "));
+        //ui.add_enabled(false, Button::selectable(false, " ⛭ System "));
 
         // Show debug warning
         if cfg!(debug_assertions) {
@@ -166,8 +167,8 @@ impl LayoutRender {
                 None => heading,
             };
 
-            TopBottomPanel::top(format!("error_panel_{:?}", i)).resizable(false).show(ui.ctx(), |ui| {
-                menu::bar(ui, |ui| {
+            Panel::top(format!("error_panel_{:?}", i)).resizable(false).show_inside(ui, |ui| {
+                MenuBar::new().ui(ui, |ui| {
                     state.colorix.draw_background(ui.ctx(), true);
 
                     // add error message

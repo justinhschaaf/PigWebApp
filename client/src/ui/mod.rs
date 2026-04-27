@@ -1,6 +1,6 @@
 use crate::ui::style::{SPACE_MEDIUM, TABLE_COLUMN_WIDTH_SMALL, TABLE_ROW_HEIGHT_SMALL};
 use egui::text::LayoutJob;
-use egui::{Align, FontSelection, Galley, Layout, RichText, Sense, Ui, WidgetText};
+use egui::{Align, FontSelection, Galley, Layout, RichText, Sense, TextBuffer, Ui, WidgetText};
 use egui_extras::{Column, TableBody, TableBuilder, TableRow};
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ pub mod style;
 ///     });
 /// }
 /// ```
-pub fn properties_list(ui: &mut Ui) -> TableBuilder {
+pub fn properties_list(ui: &mut Ui) -> TableBuilder<'_> {
     TableBuilder::new(ui)
         .striped(true)
         .resizable(false)
@@ -128,14 +128,14 @@ pub fn spaced_heading(ui: &mut Ui, text: impl Into<RichText>) {
 /// let te = egui::TextEdit::singleline(&mut "Value").desired_rows(4).layouter(&mut layouter);
 /// ```
 // Adapted from https://github.com/emilk/egui/blob/0db56dc9f1a8459b5b9376159fab7d7048b19b65/crates/egui/src/widgets/text_edit/builder.rs#L521-L529
-pub fn wrapped_singleline_layouter() -> impl FnMut(&Ui, &str, f32) -> Arc<Galley> {
-    |ui: &Ui, text: &str, wrap_width: f32| {
+pub fn wrapped_singleline_layouter() -> impl FnMut(&Ui, &dyn TextBuffer, f32) -> Arc<Galley> {
+    |ui: &Ui, text: &dyn TextBuffer, wrap_width: f32| {
         let job = LayoutJob::simple(
-            text.to_owned(),
+            text.as_str().to_owned(),
             FontSelection::default().resolve(ui.style()),
             ui.visuals().override_text_color.unwrap_or_else(|| ui.visuals().widgets.inactive.text_color()),
             wrap_width,
         );
-        ui.fonts(|f| f.layout_job(job))
+        ui.fonts_mut(|f| f.layout_job(job))
     }
 }

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::data::state::ClientState;
-use ehttp::{Credentials, Headers, Request, Response};
+use ehttp::{Credentials, Headers, Method, Request, Response};
 use log::{debug, error};
 use pigweb_common::bulk::{BulkImport, BulkPatch, BulkQuery};
 use pigweb_common::pigs::{Pig, PigQuery};
@@ -250,7 +250,7 @@ endpoint!(BulkCreateHandler, &Vec<String>, BulkImport, |input| {
     let (tx, rx) = oneshot::channel();
 
     // If the JSON POST request was generated successfully
-    let req = Request::json(yuri!(BULK_API_ROOT, "create"), input);
+    let req = Request::post_json(yuri!(BULK_API_ROOT, "create"), input);
     if let Ok(req) = req {
         // Add correct options to the request
         let req = Request {
@@ -280,11 +280,11 @@ endpoint!(BulkPatchHandler, BulkPatch, BulkPatch, |input: BulkPatch| {
     let (tx, rx) = oneshot::channel();
 
     // If the JSON POST request was generated successfully
-    let req = Request::json(yuri!(BULK_API_ROOT, "patch"), &input);
+    let req = Request::post_json(yuri!(BULK_API_ROOT, "patch"), &input);
     if let Ok(req) = req {
         // Add correct options to the request
         let req = Request {
-            method: "PATCH".to_owned(),
+            method: Method::PATCH,
             credentials: Credentials::SameOrigin,
             headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
             ..req
@@ -371,11 +371,11 @@ endpoint!(PigUpdateHandler, &Pig, Response, |input| {
     let (tx, rx) = oneshot::channel();
 
     // If the JSON POST was generated successfully
-    let req = Request::json(yuri!(PIG_API_ROOT, "update"), input);
+    let req = Request::post_json(yuri!(PIG_API_ROOT, "update"), input);
     if let Ok(req) = req {
         // Convert the request type from POST to PUT
         let req = Request {
-            method: "PUT".to_owned(),
+            method: Method::PUT,
             credentials: Credentials::SameOrigin,
             headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "application/json")]),
             ..req
@@ -403,7 +403,7 @@ endpoint!(PigDeleteHandler, Uuid, Response, |input: Uuid| {
 
     // Convert method type to DELETE, ::get method is just a good starter
     let req = Request {
-        method: "DELETE".to_owned(),
+        method: Method::DELETE,
         credentials: Credentials::SameOrigin,
         headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
         ..Request::get(yuri!(PIG_API_ROOT, "delete" ;? query!("id" = input.to_string().as_str())))
@@ -507,7 +507,7 @@ endpoint!(UserExpireHandler, Uuid, User, |input: Uuid| {
 
     // Convert method type to PATCH, ::get method is just a good starter
     let req = Request {
-        method: "PATCH".to_owned(),
+        method: Method::PATCH,
         credentials: Credentials::SameOrigin,
         headers: Headers::new(&[("Accept", "application/json"), ("Content-Type", "text/plain; charset=utf-8")]),
         ..Request::get(yuri!(USER_API_ROOT, "expire" ;? query!("id" = input.to_string().as_str())))
