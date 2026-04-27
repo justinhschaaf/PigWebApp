@@ -19,7 +19,7 @@ use rocket::fairing::AdHoc;
 use rocket::fs::NamedFile;
 use rocket::response::status::NotFound;
 use rocket::State;
-use rocket_oauth2::{HyperRustlsAdapter, OAuth2};
+use rocket_oauth2::{HyperRustlsAdapter, OAuth2, OAuthConfig, StaticProvider};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -99,7 +99,11 @@ async fn rocket() -> _ {
             rocket.attach(OAuth2::<OpenIDAuth>::custom(HyperRustlsAdapter::default(), oidc_config.to_oauth_config()));
     } else {
         warn!("Unable to find OIDC configuration. This is not supported, use at your own risk!!!");
-        rocket = rocket.attach(OAuth2::<OpenIDAuth>::fairing("generic_oauth2"));
+        // Configure the fairing with dummy config
+        rocket = rocket.attach(OAuth2::<OpenIDAuth>::custom(
+            HyperRustlsAdapter::default(),
+            OAuthConfig::new(StaticProvider::Wikimedia, "".to_owned(), "".to_owned(), None),
+        ));
     }
 
     rocket
