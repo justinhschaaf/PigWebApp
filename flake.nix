@@ -165,7 +165,7 @@
                 wasm-bindgen-cli = pkgs.buildWasmBindgenCli rec {
                     src = pkgs.fetchCrate {
                         pname = "wasm-bindgen-cli";
-                        hash = "sha256-3RJzK7mkYFrs7C/WkhW9Rr4LdP5ofb2FdYGz1P7Uxog=";
+                        hash = "sha256-ve783oYH0TGv8Z8lIPdGjItzeLDQLOT5uv/jbFOlZpI=";
                         #hash = pkgs.lib.fakeHash;
 
                         # as per the docs: "this version must match EXACTLY the
@@ -179,13 +179,13 @@
                         # - get the version
                         #
                         # https://teu5us.github.io/nix-lib.html#lib.lists.findfirst
-                        version = (pkgs.lib.lists.findFirst (crate: crate.name == "wasm-bindgen") { version = "0.2.100"; } (pkgs.lib.importTOML ./Cargo.lock).package).version;
+                        version = (pkgs.lib.lists.findFirst (crate: crate.name == "wasm-bindgen") { version = "0.2.118"; } (pkgs.lib.importTOML ./Cargo.lock).package).version;
                     };
 
                     cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
                         inherit src;
                         inherit (src) pname version;
-                        hash = "sha256-qsO12332HSjWCVKtf1cUePWWb9IdYUmT+8OPj/XP2WE=";
+                        hash = "sha256-EYDfuBlH3zmTxACBL+sjicRna84CvoesKSQVcYiG9P0=";
                         #hash = pkgs.lib.fakeHash;
                     };
                 };
