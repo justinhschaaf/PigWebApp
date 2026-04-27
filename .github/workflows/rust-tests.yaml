@@ -1,0 +1,59 @@
+name: Rust - Check, Lint, and Test
+# https://dev.to/bampeers/rust-ci-with-github-actions-1ne9
+
+on:
+  # Runs on pushes targeting the main branch
+  push:
+    branches: [ "main" ]
+  # Runs on PRs targeting the main branch
+  pull_request:
+    branches: [ "main" ]
+  # Allow running this workflow manually from the Actions tab
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+        # Setup Nix and enter the flake shell
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - name: Cache Nix store
+        uses: nix-community/cache-nix-action@v6
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size: 1536M
+      - name: Use Nix shell
+        uses: rrbutani/use-nix-shell-action@v1
+        with:
+          devShell: .#actions
+          extraNixOptions: --impure
+        # Rust stuff
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Check code
+        run: cargo check --workspace
+      - name: Clippy check
+        run: cargo clippy --all-targets -- --no-deps
+      - name: Run tests
+        run: cargo test --workspace --verbose

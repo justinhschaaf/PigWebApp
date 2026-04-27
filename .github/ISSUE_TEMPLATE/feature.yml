@@ -1,6 +1,6 @@
 name: Feature Request
 description: "Something to improve."
-labels: [ "feature" ]
+labels: [ "enhancement" ]
 assignees: [ "justinhschaaf" ]
 body:
   - type: textarea
