@@ -12,7 +12,7 @@ use crate::bulkapi::get_bulk_api_routes;
 use crate::config::Config;
 use crate::pigapi::get_pig_api_routes;
 use crate::userapi::get_user_api_routes;
-use diesel::{sql_query, Connection, PgConnection, RunQueryDsl};
+use diesel::{Connection, PgConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use pigweb_common::{OpenIDAuth, AUTH_API_ROOT, BULK_API_ROOT, PIG_API_ROOT, USER_API_ROOT};
 use rocket::fairing::AdHoc;
@@ -76,21 +76,6 @@ async fn rocket() -> _ {
     if db_connection.run_pending_migrations(MIGRATIONS).is_err() {
         panic!("Unable to migrate database to the latest schema.");
     };
-
-    // preempt possible collation version issues by assuming the database needs
-    // to be reindexed and collation version needs to be refreshed. was running
-    // into this issue during testing after updating everything, apparently a
-    // general fix for this was declined by postgres for whatever reason
-    // https://dba.stackexchange.com/a/324652
-    // https://github.com/NixOS/nixpkgs/issues/361481#issuecomment-2515791583
-    if let Err(e) = sql_query(format!(
-        "REINDEX DATABASE {0}; ALTER DATABASE {0} REFRESH COLLATION VERSION;",
-        config.database.dbname.unwrap_or("pigweb".to_owned())
-    ))
-    .execute(&mut db_connection)
-    {
-        warn!("Issue refreshing database collation version: {:?}", e)
-    }
 
     // warn if groups are not configured
     if config.groups.is_empty() {
